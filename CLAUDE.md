@@ -220,11 +220,10 @@ python whisper-transcribe.py "pfad/zur/audiodatei.mp3"
 
 ## Systemumgebung
 
-- **Python:** 3.12.0 (`C:\Users\dan93\AppData\Local\Programs\Python\Python312`)
+- **Python:** 3.12.0
 - **GPU:** NVIDIA GeForce RTX 4060 (8 GB VRAM)
 - **NPU:** Intel Movidius 3700VC VPU (nicht nutzbar fuer Whisper)
 - **CUDA:** 13.1, Treiber 591.74
 - **OS:** Windows 11
 - **Geraet:** Surface Laptop Studio 2
-- **Projektpfad:** `C:\Users\dan93\OneDrive\Documents\AA Claude Programme`
-- **Modell-Cache:** `C:\Users\dan93\.cache\huggingface\hub\`
+- **Modell-Cache:** `~\.cache\huggingface\hub\`

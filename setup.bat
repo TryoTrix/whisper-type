@@ -81,11 +81,11 @@ if exist "%STARTUP%\Whisper Diktiertool.lnk" (
 )
 
 echo.
-echo [4/5] Lade Whisper-Modell herunter (large-v3-turbo, ca. 1.5 GB)...
+echo [4/5] Lade Whisper-Modell herunter (large-v3, ca. 3 GB)...
 echo        Das kann beim ersten Mal einige Minuten dauern.
 echo.
 
-python -c "from faster_whisper import WhisperModel; print('Lade Modell...'); m = WhisperModel('large-v3-turbo', device='cuda', compute_type='int8_float16'); print('Modell erfolgreich geladen!')"
+python -c "from faster_whisper import WhisperModel; print('Lade Modell...'); m = WhisperModel('large-v3', device='cuda', compute_type='float16'); print('Modell erfolgreich geladen!')"
 if errorlevel 1 (
     echo.
     echo [WARNUNG] Modell konnte nicht auf GPU geladen werden.
@@ -104,6 +104,7 @@ echo ============================================
 echo.
 echo   Hotkey:    CTRL+ALT+D (Aufnahme starten/stoppen)
 echo   Tray-Icon: Grau = laedt, Gruen = bereit, Rot = Aufnahme
+echo   Tray-Menue: Rechtsklick fuer Neustart / Beenden
 echo   Autostart: Aktiv (startet bei Windows-Login)
 echo.
 echo   Das Diktiertool laeuft jetzt im System Tray.

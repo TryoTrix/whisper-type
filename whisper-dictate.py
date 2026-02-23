@@ -135,11 +135,40 @@ def create_icon_loading():
     return img
 
 
+def get_today_stats():
+    """Heutige Diktate zaehlen und Audio-Dauer summieren aus whisper-history.log."""
+    try:
+        from datetime import datetime
+        today = datetime.now().strftime("%Y-%m-%d")
+        log_path = os.path.join(os.path.dirname(__file__), "whisper-history.log")
+        if not os.path.exists(log_path):
+            return 0, 0.0
+        count = 0
+        total_seconds = 0.0
+        with open(log_path, "r", encoding="utf-8") as f:
+            for line in f:
+                # Nur echte Diktate: [2026-02-23 15:47:45] (14.8s) Text...
+                if not line.startswith(f"[{today}"):
+                    continue
+                m = re.match(r'\[.+?\] \((\d+\.?\d*)s\) .+', line)
+                if m:
+                    count += 1
+                    total_seconds += float(m.group(1))
+        return count, total_seconds
+    except Exception:
+        return 0, 0.0
+
+
 def update_tray(status_text, icon_img):
     """Tray-Icon und Tooltip aktualisieren."""
     if tray_icon:
         tray_icon.icon = icon_img
-        tray_icon.title = f"Whisper Diktiertool - {status_text}"
+        count, total_sec = get_today_stats()
+        stats = ""
+        if count > 0:
+            minutes = total_sec / 60
+            stats = f" | Heute: {count}x, {minutes:.1f} Min"
+        tray_icon.title = f"Whisper Diktiertool - {status_text}{stats}"
 
 
 def play_start_sound():

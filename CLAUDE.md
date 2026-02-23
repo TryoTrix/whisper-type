@@ -37,6 +37,7 @@
 - **SPOKEN_PUNCTUATION:** Gesprochene Satzzeichen werden automatisch ersetzt (z.B. "Doppelpunkt" → `:`, "Fragezeichen" → `?`, "Anführungszeichen" → `"`). Konfigurierbar im `SPOKEN_PUNCTUATION` Dictionary
 - **Ausgabe:** Transkribierter Text wird via Clipboard in das aktive Fenster eingefuegt
 - **Tray-Icon Farben:** Grau = Modell laedt, Gruen = bereit, Rot = Aufnahme laeuft
+- **Tray-Tooltip Statistik:** Zeigt heutige Diktate und Audio-Dauer im Tooltip an (z.B. "Heute: 5x, 2.1 Min"). Wird nach jedem Diktat aktualisiert, liest aus `whisper-history.log`
 - **Audio-Feedback:** Hoher Beep (800 Hz) bei Start, tiefer Beep (500 Hz) bei Stop (`winsound.Beep`)
 - **REC-Overlay:** Roter pulsierender Balken (8px) am oberen Bildschirmrand auf allen Monitoren waehrend der Aufnahme (tkinter, click-through). Mikrofon-Icon (100x100, 8x Supersampling, r_outer=400 fuer lueckenlosen Kreis) mit Electric Border Effect: 90 pre-gerenderte Frames (3s Loop, 30fps) mit echtem 2D Pixel-Displacement (simuliert SVG feDisplacementMap). Dual-Ring-System: innerer Ring (White-hot Core + Sharp + 4 Glow-Layer, border_r=mic_r+1) und aeusserer Orbit-Ring (eigenes Noise-Feld, langsamerer Pan). Fill-Disc (200,42,42, Blur 8) hinter allen Rings fuellt den Bereich zwischen Mic-Icon und Electric Border lueckenlos. Noise-Texturen (5 Oktaven, 520x520) werden zirkulaer gepannt fuer organische Turbulenz. Alle Blur-Layer werden VOR dem Frame-Loop zu 2 Composite-Bildern zusammengefuegt (nur 2 Displacement-Ops pro Frame statt 6, keine Blur-Ops im Loop). Visuelle Effekte: Breathing Pulse (Glow-Intensitaet pulsiert per Sinus), Core-Flash (3 kurze Helligkeits-Blitze pro Loop), Dunkelrot-Compositing (halbtransparente Randpixel → dunkles Rot statt Schwarz). Pre-Rendering laeuft parallel zum Modell-Laden (~5-8s). Fallback: statisches Mic-Icon mit Fill-Disc bis Frames fertig. ~7 MB RAM fuer Frame-Liste
 - **History Log:** Jede erfolgreiche Transkription wird mit Timestamp in `whisper-history.log` gespeichert (`[2026-02-17 14:32:05] Text...`)
@@ -234,6 +235,15 @@ python whisper-transcribe.py "pfad/zur/audiodatei.mp3"
 - Erstellt `.txt` (Volltext) und `.srt` (Untertitel) neben der Quelldatei
 - Unterstuetzte Formate: mp3, wav, m4a, flac, ogg, wma, aac, mp4, mkv, avi
 - Gleiche GPU-Einstellungen wie whisper-dictate
+
+---
+
+## Ideen fuer die Zukunft
+
+- **SPOKEN_PUNCTUATION in Config auslagern:** In `whisper-config.json` verschieben statt im Code hardcoded, neue Ersetzungen ohne Script-Edit hinzufuegen
+- **whisper-transcribe.py updaten:** Gleiche Settings wie whisper-dictate (vad_filter, Halluzinations-Filter, no_speech deaktiviert)
+- **Auto-Reconnect Keyboard-Hook:** Watchdog-Thread der erkennt wenn der Hook nach ~3h/Sleep verloren geht und automatisch neu registriert
+- **Sprache umschaltbar:** Per Tray-Menue zwischen Deutsch/Englisch wechseln, oder zweiter Hotkey (z.B. CTRL+ALT+E fuer Englisch)
 
 ---
 

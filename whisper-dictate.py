@@ -1372,13 +1372,9 @@ def main():
     # Config laden (calm_mode etc.)
     load_config()
 
-    # Tray-Icon erstellen
+    # Tray-Icon erstellen (Menu nur fuer default action, natives Menue deaktiviert)
     menu = pystray.Menu(
         pystray.MenuItem("Dashboard", on_activate, default=True, visible=False),
-        pystray.MenuItem("Calm Mode", on_toggle_calm, checked=lambda item: calm_mode),
-        pystray.Menu.SEPARATOR,
-        pystray.MenuItem("Neustart", on_restart),
-        pystray.MenuItem("Beenden", on_quit),
     )
     tray_icon = pystray.Icon(
         "whisper-dictate",
@@ -1386,6 +1382,15 @@ def main():
         "Whisper Diktiertool - Lade Modell...",
         menu,
     )
+
+    # Rechts-Klick soll Dashboard oeffnen statt natives Menue (wie Links-Klick)
+    _original_on_notify = tray_icon._on_notify
+    def _patched_on_notify(wparam, lparam):
+        if lparam == 0x0205:  # WM_RBUTTONUP: Dashboard statt Popup-Menu
+            tray_icon()
+        else:
+            _original_on_notify(wparam, lparam)
+    tray_icon._on_notify = _patched_on_notify
 
     # Recording-Overlay (floating "REC" Anzeige)
     overlay = RecordingOverlay()

@@ -54,8 +54,12 @@
 | `SHORT_TEXT_MAX_WORDS` | Bei <= N Woertern trailing Punkt entfernen (3) |
 | `HALLUCINATION_PHRASES` | Bekannte Whisper-Halluzinationen die gefiltert werden |
 
-### Tray-Menue
-- **Calm:** Toggle fuer Calm Mode (Haekchen = aktiv). Ersetzt das animierte Electric Border Overlay durch ein statisches Mic-Icon (weisses Mikrofon in rotem Kreis). Einstellung wird persistent in `whisper-config.json` gespeichert, wirkt sofort ohne Neustart
+### Tray-Icon Interaktion
+- **Links-Klick:** Oeffnet das Dashboard-Popup (dark-themed, slide-up Animation). Zeigt: Status (Bereit/Aufnahme/Laden), heutige Statistik (Diktate + Minuten), Verlauf der letzten 8 Diktate, Aktions-Buttons (Calm Mode, Neustart, Beenden). Schliesst sich automatisch bei Aufnahme-Start. Toggle: erneuter Klick schliesst das Dashboard
+- **Rechts-Klick:** Natives Kontextmenue mit Calm Mode Toggle, Neustart, Beenden
+
+### Tray-Menue (Rechts-Klick)
+- **Calm Mode:** Toggle (Haekchen = aktiv). Ersetzt das animierte Electric Border Overlay durch ein statisches Mic-Icon (weisses Mikrofon in rotem Kreis). Einstellung wird persistent in `whisper-config.json` gespeichert, wirkt sofort ohne Neustart
 - **Neustart:** Beendet aktuelle Instanz, wartet 2s (Mutex-Freigabe), startet `pythonw` direkt neu. Verwendet `pythonw -c "import time,subprocess;time.sleep(2);..."` statt `cmd.exe` fuer komplett unsichtbaren Neustart (kein Terminal-Fenster)
 - **Beenden:** Beendet das Diktiertool komplett
 
@@ -103,7 +107,7 @@ Desktop-Verknuepfung: `Whisper Restart.lnk` auf OneDrive-Desktop (WindowStyle 7,
 Windows Mutex (`WhisperDiktiertool_Mutex`) verhindert Doppelstart. Wenn eine Instanz laeuft, beendet sich eine zweite sofort.
 
 ### Architektur
-- **Hauptthread:** pystray Tray-Icon (blockierend)
+- **Hauptthread:** pystray Tray-Icon (blockierend), Links-Klick setzt `_dashboard_toggle` Event
 - **Thread 1:** `hotkey_loop` - wartet auf `keyboard.wait(HOTKEY)`, startet erst wenn Modell geladen
 - **Thread 2:** `load_model` - laedt Whisper-Modell auf GPU
 - **Thread 3:** `RecordingOverlay` - tkinter Fenster, pollt `recording`-Status alle 100ms

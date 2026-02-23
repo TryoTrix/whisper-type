@@ -109,6 +109,7 @@ stream = None
 target_window = None
 tray_icon = None
 calm_mode = False  # True = statisches Mic-Icon statt Electric Border
+_dashboard_toggle = threading.Event()  # Signal von Tray (Links-Klick) an tkinter-Thread
 
 
 def create_icon_idle():
@@ -157,6 +158,44 @@ def get_today_stats():
         return count, total_seconds
     except Exception:
         return 0, 0.0
+
+
+def get_recent_logs(max_entries=20):
+    """Letzte Diktate aus whisper-history.log fuer Dashboard-Anzeige.
+
+    Filtert DEBUG/PERF/STARTUP-Zeilen heraus, parst nur echte Diktate.
+    Liest nur die letzten 500 Zeilen fuer Performance bei grossen Logdateien.
+    """
+    log_path = os.path.join(os.path.dirname(__file__), "whisper-history.log")
+    if not os.path.exists(log_path):
+        return []
+    entries = []
+    try:
+        with open(log_path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+        for line in lines[-500:]:
+            if any(tag in line for tag in ("[DEBUG]", "[PERF]", "[STARTUP]", "[FEHLER]", "OVERFLOW")):
+                continue
+            # Neues Format mit Dauer: [2026-02-23 14:32:05] (12.3s) Text...
+            m = re.match(r'\[(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2})\] \((\d+\.?\d*)s\) (.+)', line)
+            if m:
+                entries.append({
+                    "date": m.group(1), "time": m.group(2),
+                    "duration": float(m.group(3)), "text": m.group(4).strip()
+                })
+                continue
+            # Altes Format ohne Dauer: [2026-02-17 23:47:02] Text...
+            m = re.match(r'\[(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2})\] (.+)', line)
+            if m:
+                text = m.group(3).strip()
+                if not text.startswith("["):
+                    entries.append({
+                        "date": m.group(1), "time": m.group(2),
+                        "duration": 0, "text": text
+                    })
+    except Exception:
+        pass
+    return entries[-max_entries:]
 
 
 def update_tray(status_text, icon_img):
@@ -357,6 +396,8 @@ class RecordingOverlay:
         self._static_frame = None   # Fallback-Frame (nur Mic, keine Electric Border)
         self._visible = False
         self._t0 = 0
+        self._dashboard_win = None
+        self._dashboard_visible = False
 
     def _create_mic_icon(self):
         """Original Mikrofon-Icon als RGBA, 8x Supersampling fuer glatte Raender.
@@ -756,6 +797,15 @@ class RecordingOverlay:
                 self._orb_win.withdraw()
             self._visible = False
 
+        # Dashboard toggle (von Tray Links-Klick)
+        if _dashboard_toggle.is_set():
+            _dashboard_toggle.clear()
+            self._toggle_dashboard()
+
+        # Dashboard automatisch schliessen bei Aufnahme-Start
+        if recording and self._dashboard_visible:
+            self._destroy_dashboard()
+
         self.root.after(100, self._poll)
 
     def _animate(self):
@@ -787,6 +837,310 @@ class RecordingOverlay:
             win.configure(bg=color)
 
         self.root.after(33, self._animate)  # ~30 FPS
+
+    # ================================================================
+    # Dashboard Popup
+    # ================================================================
+
+    def _toggle_dashboard(self):
+        """Dashboard ein-/ausblenden."""
+        if self._dashboard_visible:
+            self._destroy_dashboard()
+        else:
+            self._create_dashboard()
+
+    def _destroy_dashboard(self):
+        """Dashboard schliessen und aufraeumen."""
+        if self._dashboard_win:
+            try:
+                self._dashboard_win.destroy()
+            except Exception:
+                pass
+            self._dashboard_win = None
+        self._dashboard_visible = False
+
+    def _create_dashboard(self):
+        """Premium Dashboard Popup mit Stats, Verlauf und Controls."""
+        import tkinter as tk
+
+        if self._dashboard_win:
+            self._destroy_dashboard()
+            return
+
+        # ── Design Tokens ──
+        BG = "#0c0c18"
+        CARD = "#13132a"
+        CARD_BORDER = "#222244"
+        BORDER = "#282850"
+        ACCENT = "#ef4444"
+        GREEN = "#22c55e"
+        AMBER = "#f59e0b"
+        TEXT = "#eaeaf2"
+        TEXT2 = "#9494b0"
+        TEXT3 = "#5c5c78"
+        DIVIDER = "#1c1c38"
+        BTN = "#181834"
+        BTN_HOVER = "#262650"
+        CALM_ON_BG = "#14301a"
+        CALM_ON_HOVER = "#1e4826"
+        LOG_ROW_HOVER = "#12122a"
+        WIDTH = 370
+
+        win = tk.Toplevel(self.root)
+        win.overrideredirect(True)
+        win.attributes("-topmost", True)
+        win.configure(bg=BORDER)
+
+        # Aeusserer Rahmen (1px Border)
+        inner = tk.Frame(win, bg=BG)
+        inner.pack(fill="both", expand=True, padx=1, pady=1)
+
+        # Rote Akzentlinie oben
+        tk.Frame(inner, bg=ACCENT, height=2).pack(fill="x")
+
+        # Hauptbereich
+        main = tk.Frame(inner, bg=BG)
+        main.pack(fill="both", expand=True, padx=24, pady=(20, 20))
+
+        # Mindestbreite erzwingen
+        spacer = tk.Frame(main, bg=BG, height=0, width=WIDTH - 50)
+        spacer.pack(fill="x")
+        spacer.pack_propagate(False)
+
+        # ── Header ──
+        hdr = tk.Frame(main, bg=BG)
+        hdr.pack(fill="x", pady=(0, 4))
+
+        tk.Label(hdr, text="Whisper Diktiertool",
+                 font=("Segoe UI Semibold", 14), fg=TEXT, bg=BG).pack(side="left")
+
+        close_btn = tk.Label(hdr, text="\u2715", font=("Segoe UI", 12),
+                             fg=TEXT3, bg=BG, cursor="hand2", padx=4)
+        close_btn.pack(side="right")
+        close_btn.bind("<Button-1>", lambda e: self._destroy_dashboard())
+        close_btn.bind("<Enter>", lambda e: close_btn.configure(fg=ACCENT))
+        close_btn.bind("<Leave>", lambda e: close_btn.configure(fg=TEXT3))
+
+        # ── Status-Zeile ──
+        status_f = tk.Frame(main, bg=BG)
+        status_f.pack(fill="x", pady=(2, 16))
+
+        dot_cv = tk.Canvas(status_f, width=10, height=10, bg=BG, highlightthickness=0)
+        dot_cv.pack(side="left", padx=(0, 8), pady=3)
+
+        if recording:
+            dot_color, status_text = ACCENT, "Recording..."
+        elif model is not None:
+            dot_color, status_text = GREEN, "Ready"
+        else:
+            dot_color, status_text = "#71717a", "Loading model..."
+
+        dot_cv.create_oval(1, 1, 9, 9, fill=dot_color, outline=dot_color)
+
+        tk.Label(status_f, text=status_text, font=("Segoe UI", 10),
+                 fg=TEXT2, bg=BG).pack(side="left")
+
+        tk.Label(status_f, text="CTRL+ALT+D", font=("Consolas", 9),
+                 fg=TEXT3, bg=BG).pack(side="right")
+
+        # ── Trennlinie ──
+        tk.Frame(main, bg=DIVIDER, height=1).pack(fill="x", pady=(0, 16))
+
+        # ── Statistik-Karten ──
+        count, total_sec = get_today_stats()
+        minutes = total_sec / 60
+
+        tk.Label(main, text="TODAY", font=("Segoe UI Semibold", 9),
+                 fg=TEXT3, bg=BG).pack(anchor="w", pady=(0, 10))
+
+        cards_row = tk.Frame(main, bg=BG)
+        cards_row.pack(fill="x", pady=(0, 16))
+
+        def make_stat_card(parent, value, label, accent_color, pad_kw):
+            wrapper = tk.Frame(parent, bg=CARD_BORDER)
+            wrapper.pack(side="left", expand=True, fill="x", **pad_kw)
+
+            card_inner = tk.Frame(wrapper, bg=CARD)
+            card_inner.pack(fill="both", expand=True, padx=1, pady=1)
+
+            # Farbiger Akzent-Balken links
+            accent_bar = tk.Frame(card_inner, bg=accent_color, width=3)
+            accent_bar.pack(side="left", fill="y")
+            accent_bar.pack_propagate(False)
+
+            content = tk.Frame(card_inner, bg=CARD, padx=14, pady=10)
+            content.pack(side="left", fill="both", expand=True)
+
+            tk.Label(content, text=str(value), font=("Segoe UI", 26, "bold"),
+                     fg=TEXT, bg=CARD).pack(anchor="w")
+            tk.Label(content, text=label, font=("Segoe UI", 9),
+                     fg=TEXT2, bg=CARD).pack(anchor="w", pady=(2, 0))
+
+        make_stat_card(cards_row, count, "Dictations", GREEN, {"padx": (0, 5)})
+        make_stat_card(cards_row, f"{minutes:.1f}", "Min Saved", AMBER, {"padx": (5, 0)})
+
+        # ── Trennlinie ──
+        tk.Frame(main, bg=DIVIDER, height=1).pack(fill="x", pady=(0, 16))
+
+        # ── Verlauf ──
+        logs = get_recent_logs(8)
+
+        history_hdr = tk.Frame(main, bg=BG)
+        history_hdr.pack(fill="x", pady=(0, 10))
+
+        tk.Label(history_hdr, text="HISTORY", font=("Segoe UI Semibold", 9),
+                 fg=TEXT3, bg=BG).pack(side="left")
+
+        tk.Label(history_hdr, text="click to copy", font=("Segoe UI", 8),
+                 fg=TEXT3, bg=BG).pack(side="right")
+
+        if logs:
+            from datetime import datetime
+            today_str = datetime.now().strftime("%Y-%m-%d")
+
+            COPIED_BG = "#1a2a1a"  # Kurzer gruener Flash nach Kopieren
+
+            for entry in reversed(logs):
+                row = tk.Frame(main, bg=BG, cursor="hand2")
+                row.pack(fill="x", pady=1)
+
+                # Datums-Prefix fuer aeltere Eintraege
+                if entry["date"] == today_str:
+                    time_display = entry["time"][:5]
+                    time_width = 5
+                else:
+                    time_display = entry["date"][5:] + " " + entry["time"][:5]
+                    time_width = 11
+
+                tk.Label(row, text=time_display, font=("Consolas", 9),
+                         fg=TEXT3, bg=BG, width=time_width, anchor="w").pack(side="left")
+
+                if entry["duration"] > 0:
+                    dur = f"{entry['duration']:.0f}s"
+                    tk.Label(row, text=dur, font=("Consolas", 9),
+                             fg=ACCENT, bg=BG, width=4, anchor="e").pack(side="left", padx=(6, 8))
+                else:
+                    tk.Frame(row, bg=BG, width=52).pack(side="left")
+
+                # Text-Vorschau (gekuerzt)
+                preview = entry["text"]
+                max_chars = 30 if entry["date"] != today_str else 36
+                if len(preview) > max_chars:
+                    preview = preview[:max_chars] + "\u2026"
+                tk.Label(row, text=preview, font=("Segoe UI", 9),
+                         fg=TEXT2, bg=BG, anchor="w").pack(side="left", fill="x")
+
+                # Klick kopiert den vollen Text in die Zwischenablage
+                full_text = entry["text"]
+                all_widgets = [row] + list(row.winfo_children())
+
+                def copy_text(e, txt=full_text, ws=all_widgets):
+                    pyperclip.copy(txt)
+                    # Gruener Flash als Bestaetigung
+                    for w in ws:
+                        w.configure(bg=COPIED_BG)
+                    row_ref = ws[0]
+                    row_ref.after(400, lambda: [
+                        w.configure(bg=BG) for w in ws if w.winfo_exists()])
+
+                for w in all_widgets:
+                    w.bind("<Button-1>", copy_text)
+                    w.bind("<Enter>", lambda e, ws=all_widgets: [
+                        x.configure(bg=LOG_ROW_HOVER) for x in ws])
+                    w.bind("<Leave>", lambda e, ws=all_widgets: [
+                        x.configure(bg=BG) for x in ws])
+        else:
+            tk.Label(main, text="No dictations yet",
+                     font=("Segoe UI", 9), fg=TEXT3, bg=BG).pack(anchor="w", pady=(0, 4))
+
+        # ── Trennlinie ──
+        tk.Frame(main, bg=DIVIDER, height=1).pack(fill="x", pady=(14, 16))
+
+        # ── Aktions-Buttons ──
+        btns = tk.Frame(main, bg=BG)
+        btns.pack(fill="x")
+
+        def make_action_btn(parent, text, command, bg_c=BTN, hover_c=BTN_HOVER, fg_c=TEXT):
+            btn = tk.Label(parent, text=text, font=("Segoe UI Semibold", 9),
+                           fg=fg_c, bg=bg_c, padx=12, pady=7, cursor="hand2")
+            btn.pack(side="left", padx=(0, 6))
+            btn.bind("<Button-1>", lambda e: command())
+            btn.bind("<Enter>", lambda e: btn.configure(bg=hover_c))
+            btn.bind("<Leave>", lambda e: btn.configure(bg=bg_c))
+            return btn
+
+        if calm_mode:
+            make_action_btn(btns, "\u2713 Calm Mode", self._dash_toggle_calm,
+                            CALM_ON_BG, CALM_ON_HOVER)
+        else:
+            make_action_btn(btns, "Calm Mode", self._dash_toggle_calm)
+
+        make_action_btn(btns, "\u21bb Restart", self._dash_restart)
+        make_action_btn(btns, "\u23fb Quit", self._dash_quit)
+
+        # ── Positionierung & Animation ──
+        win.update_idletasks()
+        win_w = max(WIDTH, win.winfo_reqwidth())
+        win_h = win.winfo_reqheight()
+
+        screen_w = self.root.winfo_screenwidth()
+        screen_h = self.root.winfo_screenheight()
+
+        x = screen_w - win_w - 16
+        y_end = screen_h - win_h - 52
+        y_start = y_end + 20
+
+        win.geometry(f"{win_w}x{win_h}+{x}+{y_start}")
+        win.attributes("-alpha", 0.0)
+
+        self._dashboard_win = win
+        self._dashboard_visible = True
+
+        # Slide-up + Fade-in
+        self._dash_animate(x, win_w, win_h, y_end, y_start, 0)
+
+    def _dash_animate(self, x, w, h, y_end, y_start, step):
+        """Ease-out Slide-up + Fade-in Animation."""
+        if not self._dashboard_win:
+            return
+        total = 8
+        if step > total:
+            return
+
+        t = step / total
+        ease = 1 - (1 - t) ** 3  # Ease-out cubic
+
+        y = int(y_start + (y_end - y_start) * ease)
+        alpha = min(1.0, ease * 1.3)
+
+        try:
+            self._dashboard_win.geometry(f"{w}x{h}+{x}+{y}")
+            self._dashboard_win.attributes("-alpha", alpha)
+        except Exception:
+            return
+
+        if step < total:
+            self.root.after(18, self._dash_animate, x, w, h, y_end, y_start, step + 1)
+
+    def _dash_toggle_calm(self):
+        """Calm Mode umschalten und Dashboard neu aufbauen."""
+        global calm_mode
+        calm_mode = not calm_mode
+        save_config()
+        self._destroy_dashboard()
+        self.root.after(50, self._create_dashboard)
+
+    def _dash_restart(self):
+        """Neustart aus Dashboard."""
+        self._destroy_dashboard()
+        if tray_icon:
+            on_restart(tray_icon, None)
+
+    def _dash_quit(self):
+        """Beenden aus Dashboard."""
+        self._destroy_dashboard()
+        if tray_icon:
+            on_quit(tray_icon, None)
 
 
 def load_model():
@@ -998,6 +1352,11 @@ def on_toggle_calm(icon, item):
     save_config()
 
 
+def on_activate(icon, item):
+    """Dashboard oeffnen/schliessen bei Links-Klick auf Tray-Icon."""
+    _dashboard_toggle.set()
+
+
 def on_quit(icon, item):
     """Beenden ueber Tray-Menue."""
     icon.stop()
@@ -1015,11 +1374,11 @@ def main():
 
     # Tray-Icon erstellen
     menu = pystray.Menu(
-        pystray.MenuItem("Calm Overlay", on_toggle_calm, checked=lambda item: calm_mode),
+        pystray.MenuItem("Dashboard", on_activate, default=True, visible=False),
+        pystray.MenuItem("Calm Mode", on_toggle_calm, checked=lambda item: calm_mode),
         pystray.Menu.SEPARATOR,
-        pystray.MenuItem("Restart", on_restart),
-        pystray.Menu.SEPARATOR,
-        pystray.MenuItem("Off", on_quit),
+        pystray.MenuItem("Neustart", on_restart),
+        pystray.MenuItem("Beenden", on_quit),
     )
     tray_icon = pystray.Icon(
         "whisper-dictate",

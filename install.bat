@@ -113,7 +113,7 @@ echo ============================================
 echo.
 echo   Hotkey:    CTRL+ALT+D (Aufnahme starten/stoppen)
 echo   Tray-Icon: Grau = laedt, Gruen = bereit, Rot = Aufnahme
-echo   Tray-Menue: Rechtsklick fuer Neustart / Beenden
+echo   Tray-Icon:  Linksklick = Dashboard, Rechtsklick = Dashboard
 echo   Autostart: Aktiv (startet bei Windows-Login)
 echo.
 echo   Das Diktiertool laeuft jetzt im System Tray.

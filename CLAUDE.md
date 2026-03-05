@@ -242,6 +242,22 @@ python whisper-transcribe.py "pfad/zur/audiodatei.mp3"
 
 ---
 
+## GitHub
+
+- **Oeffentliches Repo:** `tryotrix/whisper-type` (https://github.com/tryotrix/whisper-type)
+- **Lokaler Remote:** Zeigt aktuell auf `TryoTrix/whisper.git` (veraltet/404)
+- **Problem (Stand 04.03.2026):** Die beiden Repos haben komplett unterschiedliche Git-Historien (verschiedene Hashes). Das lokale Repo hat neuere Features (Dashboard, Stats, Calm Mode) die auf `whisper-type` fehlen
+- **TODO:** Remote auf `whisper-type` umstellen und lokale Aenderungen synchronisieren (force-push noetig wegen divergierter Historien)
+
+### Fehlende Features auf whisper-type
+- Dashboard-Popup bei Tray-Linksklick (Stats, History, Click-to-Copy)
+- Calm Mode Toggle
+- Rechtsklick oeffnet Dashboard statt natives Menue
+- Daily Stats im Tray-Tooltip
+- install.bat Update (Dashboard-Hinweis)
+
+---
+
 ## Ideen fuer die Zukunft
 
 - **SPOKEN_PUNCTUATION in Config auslagern:** In `whisper-config.json` verschieben statt im Code hardcoded, neue Ersetzungen ohne Script-Edit hinzufuegen

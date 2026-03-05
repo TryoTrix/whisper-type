@@ -1,20 +1,28 @@
-# Whisper Dictation Tool
+# Whisper Type
 
-Local speech-to-text dictation for Windows. Runs fully offline on your NVIDIA GPU with OpenAI's Whisper large-v3, delivering an excellent balance of speed and accuracy for English, German, and 90+ other languages.
+Local voice-to-text dictation for Windows. Press a hotkey, speak, text appears. Runs fully offline on your NVIDIA GPU with OpenAI's Whisper large-v3, delivering near-perfect accuracy for English, German, and 90+ other languages.
+
+**[Download ZIP](https://github.com/TryoTrix/whisper-type/archive/refs/heads/master.zip)** | Requires Windows + NVIDIA GPU + Python 3.12+
+
+![Demo](demo.gif)
 
 ## Features
 
 - **Hotkey dictation:** Press `CTRL+ALT+D`, speak, press again, text gets pasted into the active window
 - **Offline & private:** Everything runs locally on your GPU, no audio ever leaves your machine
-- **Fast & accurate:** CUDA float16 with beam search delivers high-quality transcriptions in under a second for short dictations
+- **Fast:** 73 seconds of speech transcribed in 7.7 seconds (9.5x real-time on RTX 4060)
+- **Accurate:** CUDA float16 with beam search, handles dialects, background music, and long pauses
 - **Multi-language:** Works with English, German, and all other Whisper-supported languages
-- **Spoken punctuation:** Say "colon", "question mark" etc. and get the actual character (configurable, German words by default)
-- **Hallucination filter:** Known Whisper phantom outputs (e.g. "subtitles by ZDF") are detected and discarded
-- **System tray:** Runs quietly in the background with a color-coded status icon
-- **Recording overlay:** Pulsing red bar + microphone icon across all monitors while recording
-- **Audio feedback:** Beep tones on start/stop
-- **History log:** All transcriptions are saved with timestamps
+- **Dashboard:** Click the tray icon to see today's stats, recent transcription history with click-to-copy, and quick actions (Calm Mode, restart, quit)
+- **Electric Border recording overlay:** Animated microphone icon with dual-ring plasma effect (2D pixel displacement, breathing pulse, core flash), pre-rendered at 30fps. Red pulsing bar across all monitors
+- **Calm Mode:** Toggle in the dashboard to replace the animated overlay with a simple static icon. Setting persists across restarts
+- **Spoken punctuation:** Say "colon", "question mark" etc. and get the actual character (configurable)
+- **Hallucination filter:** Known Whisper phantom outputs are detected and discarded
+- **System tray:** Runs quietly in the background with a color-coded status icon (gray/green/red)
+- **Audio feedback:** Beep tones on start/stop so you know when recording begins and ends
+- **History log:** All transcriptions are saved with timestamps to `whisper-history.log`
 - **Autostart:** Launches automatically on Windows login
+- **Single file:** The entire tool is one Python script, easy to understand and customize
 
 ## Installation
 
@@ -28,8 +36,8 @@ Local speech-to-text dictation for Windows. Runs fully offline on your NVIDIA GP
 ### Setup
 
 ```
-git clone https://github.com/dfrfrfr/whisper-diktiertool.git
-cd whisper-diktiertool
+git clone https://github.com/TryoTrix/whisper-type.git
+cd whisper-type
 install.bat
 ```
 
@@ -51,11 +59,11 @@ The installer will:
 
 | Color | Status |
 |-------|--------|
-| Gray | Model loading |
+| Gray | Model loading (~4s) |
 | Green | Ready |
 | Red | Recording |
 
-Right-click the tray icon for restart or quit.
+Left-click the tray icon to open the dashboard with stats, history, and actions. Right-click for the context menu.
 
 ### Tip: Mouse shortcut
 
@@ -84,7 +92,7 @@ All settings are defined as variables at the top of `whisper-dictate.py`:
 | `MODEL_SIZE` | Whisper model | `large-v3` |
 | `INITIAL_PROMPT` | Domain-specific terms for better recognition | Comma-separated list |
 | `SPOKEN_PUNCTUATION` | Word-to-character mapping (regex) | See table above |
-| `NO_SPEECH_THRESHOLD` | Silence threshold (higher = stricter) | `0.7` |
+| `NO_SPEECH_THRESHOLD` | Silence detection threshold | `None` (disabled, VAD handles this) |
 | `SHORT_TEXT_MAX_WORDS` | Remove trailing period for <= N words | `3` |
 | `DEBUG_TRANSCRIPTION` | Write segment details to history log | `True` |
 
@@ -92,17 +100,28 @@ To switch the language, change the `language="de"` parameter in the `model.trans
 
 ## Speed & Accuracy
 
-This tool uses Whisper `large-v3` with `float16` precision and `beam_size=5`, which hits a sweet spot between transcription quality and speed. The result is near-perfect accuracy for both English and German (including dialects and background music), while keeping latency low enough for real-time dictation.
+Uses Whisper `large-v3` with `float16` precision and `beam_size=5` for the best balance of quality and speed. Near-perfect accuracy for both English and German, including dialects and background music.
 
 Benchmarks on RTX 4060:
 
-| Scenario | Audio duration | Transcription time |
-|----------|----------------|-------------------|
-| Short dictation (1-3 words) | 2-4s | ~0.5s |
-| Medium dictation (1-2 sentences) | 4-10s | ~1s |
-| Long dictation (6 sentences) | ~55s | ~5s |
+| Scenario | Audio duration | Transcription time | Real-time factor |
+|----------|----------------|-------------------|-----------------|
+| Short dictation (1-3 words) | 2-4s | ~0.5s | 4-6x |
+| Medium dictation (1-2 sentences) | 4-10s | ~1s | 5-10x |
+| Long dictation (6 sentences) | ~55s | ~5s | 11x |
+| Very long dictation (20 segments) | 73s | 7.7s | 9.5x |
 
 If you prefer faster transcriptions over maximum accuracy, switch to `large-v3-turbo` with `beam_size=3` (~3-5x faster).
+
+## How It Works
+
+1. **Hotkey** triggers audio recording via `sounddevice`
+2. **Audio** is captured as a NumPy array at 16kHz (no WAV file intermediary)
+3. **Whisper** transcribes with `faster-whisper` (CTranslate2 backend) on your GPU
+4. **Post-processing** applies spoken punctuation replacement and hallucination filtering
+5. **Output** is pasted into the active window via clipboard
+
+The recording overlay uses pre-rendered animation frames (90 frames, 30fps) with 2D pixel displacement simulating SVG feDisplacementMap. A dual-ring system (inner plasma ring + outer orbit ring) with independent noise fields creates the electric border effect. All blur layers are pre-composited before the frame loop for minimal CPU usage during recording.
 
 ## Platform Compatibility
 
@@ -112,7 +131,15 @@ If you prefer faster transcriptions over maximum accuracy, switch to `large-v3-t
 | Linux + NVIDIA GPU | Not compatible | Uses Win32 APIs (kernel32, user32, winsound) |
 | macOS (Intel/Apple Silicon) | Not compatible | No CUDA support, no Win32 APIs |
 
-The Whisper engine itself (faster-whisper) runs cross-platform, but the entire integration layer (global hotkey, clipboard, overlay, system tray, audio feedback) is built on Windows APIs. Porting would require replacing these components.
+The Whisper engine itself (faster-whisper) runs cross-platform, but the integration layer (global hotkey, clipboard, overlay, system tray, audio feedback) is built on Windows APIs.
+
+**Contributions welcome!** If you'd like to port Whisper Type to Linux or macOS, PRs are appreciated. The main components that need platform-specific replacements are:
+- Global hotkey listener (`keyboard` library -> e.g. `pynput`)
+- Clipboard paste (`pyperclip` + `keyboard.send("ctrl+v")` -> `xdotool`/`pbpaste`)
+- System tray icon (`pystray` works cross-platform, minor adjustments needed)
+- Recording overlay (tkinter with Win32 click-through -> platform-specific window flags)
+- Audio feedback (`winsound.Beep` -> e.g. `simpleaudio`)
+- GPU: Linux has CUDA support, macOS would need CoreML or CPU fallback
 
 ## System Requirements
 

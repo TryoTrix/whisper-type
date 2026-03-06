@@ -30,9 +30,9 @@
 
 ### Funktionsweise
 - **Hotkey:** `CTRL+ALT+D` startet/stoppt die Aufnahme
-- **Modell:** `faster-whisper` large-v3, Sprache: Deutsch (beste Qualitaet, auch mit Hintergrundmusik)
-- **GPU:** CUDA float16 auf RTX 4060 (~3 GB VRAM)
-- **Transkription:** `beam_size=5`, `vad_filter=True`, `condition_on_previous_text=False`, Audio wird als NumPy-Array direkt an Whisper uebergeben (kein WAV-Umweg)
+- **Modell:** `faster-whisper` large-v3-turbo, Sprache: Deutsch (gute Qualitaet, schnell)
+- **GPU:** CUDA int8_float16 auf RTX 4060 (~3 GB VRAM)
+- **Transkription:** `beam_size=3`, `vad_filter=True`, `condition_on_previous_text=False`, Audio wird als NumPy-Array direkt an Whisper uebergeben (kein WAV-Umweg)
 - **INITIAL_PROMPT:** Fachbegriffe die Whisper korrekt erkennen soll (z.B. CLAUDE.md). Konfigurierbar in der `INITIAL_PROMPT` Variable, kein Performance-Impact
 - **SPOKEN_PUNCTUATION:** Gesprochene Satzzeichen werden automatisch ersetzt (z.B. "Doppelpunkt" → `:`, "Fragezeichen" → `?`, "Anführungszeichen" → `"`). Konfigurierbar im `SPOKEN_PUNCTUATION` Dictionary
 - **Ausgabe:** Transkribierter Text wird via Clipboard in das aktive Fenster eingefuegt
@@ -122,12 +122,12 @@ Python312/Lib/site-packages/nvidia/cudnn/bin
 
 ---
 
-## Modell-Entscheidungen (getestet am 19.02.2026)
+## Modell-Entscheidungen (getestet am 19.02.2026, gewechselt am 06.03.2026)
 
 | Modell | Ergebnis | Empfehlung |
 |--------|----------|------------|
-| `large-v3` + float16 + beam_size=5 | Beste Qualitaet, auch mit Hintergrundmusik. Langsamer (~12-16s fuer 5 Saetze) | **Aktuell aktiv** - maximale Qualitaet |
-| `large-v3-turbo` + int8_float16 + beam_size=3 | Gute Qualitaet, deutlich schneller (~3-5s). Korrigiert Selbstkorrekturen nicht (z.B. "ich hoffe, ich denke" bleibt stehen) | Schnellere Alternative |
+| `large-v3` + float16 + beam_size=5 | Beste Qualitaet, auch mit Hintergrundmusik. Langsamer (~12-16s fuer 5 Saetze) | Maximale Qualitaet, aber zu langsam fuer taeglichen Einsatz |
+| `large-v3-turbo` + int8_float16 + beam_size=3 | Gute Qualitaet, deutlich schneller (~3-5s). Transkription und Speed passen beide gut | **Aktuell aktiv** - bester Kompromiss aus Speed und Qualitaet |
 | `distil-large-v3` | Hat Deutsch als Englisch transkribiert, selbst mit `language="de"`. Unbrauchbar fuer Deutsch | Nicht verwenden |
 | `TheChola/whisper-large-v3-turbo-german-faster-whisper` | Gated Repo auf HuggingFace, braucht Account + Token. 2.6% WER auf Deutsch. Nicht getestet | Bei Bedarf mit HF-Login testen |
 

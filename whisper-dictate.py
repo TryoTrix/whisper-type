@@ -52,7 +52,7 @@ import winsound
 # ============================================================
 HOTKEY = "ctrl+alt+d"
 SAMPLE_RATE = 16000      # Whisper erwartet 16kHz
-MODEL_SIZE = "large-v3"  # Beste Qualitaet, auch mit Hintergrundmusik
+MODEL_SIZE = "large-v3-turbo"  # Schneller (~3-5s statt ~12-16s), gute Qualitaet
 NO_SPEECH_THRESHOLD = None  # Deaktiviert (no_speech_prob ist bei Deutsch unzuverlaessig)
 DEBUG_TRANSCRIPTION = True   # Segment-Details ins History-Log schreiben
 SHORT_TEXT_MAX_WORDS = 3     # Bei <= N Woertern: trailing Punkt entfernen
@@ -1154,7 +1154,7 @@ def load_model():
         model = WhisperModel(
             MODEL_SIZE,
             device="cuda",
-            compute_type="float16",
+            compute_type="int8_float16",
         )
         load_time = time.time() - t0
         append_to_history(f"[STARTUP] Modell geladen in {load_time:.1f}s")
@@ -1254,7 +1254,7 @@ def stop_recording_and_transcribe():
         segments, info = model.transcribe(
             audio,
             language="de",
-            beam_size=5,
+            beam_size=3,
             vad_filter=True,
             condition_on_previous_text=False,
             initial_prompt=INITIAL_PROMPT,

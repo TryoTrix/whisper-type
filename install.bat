@@ -90,11 +90,11 @@ if exist "%OLD_LNK%" (
 reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\StartupFolder" /v "Whisper Diktiertool.lnk" /f >nul 2>&1
 
 echo.
-echo [4/5] Lade Whisper-Modell herunter (large-v3, ca. 3 GB)...
+echo [4/5] Lade Whisper-Modell herunter (large-v3-turbo, ca. 3 GB)...
 echo        Das kann beim ersten Mal einige Minuten dauern.
 echo.
 
-python -c "from faster_whisper import WhisperModel; print('Lade Modell...'); m = WhisperModel('large-v3', device='cuda', compute_type='float16'); print('Modell erfolgreich geladen!')"
+python -c "from faster_whisper import WhisperModel; print('Lade Modell...'); m = WhisperModel('large-v3-turbo', device='cuda', compute_type='int8_float16'); print('Modell erfolgreich geladen!')"
 if errorlevel 1 (
     echo.
     echo [WARNUNG] Modell konnte nicht auf GPU geladen werden.

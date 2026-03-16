@@ -58,7 +58,7 @@ DEBUG_TRANSCRIPTION = True   # Segment-Details ins History-Log schreiben
 SHORT_TEXT_MAX_WORDS = 3     # Bei <= N Woertern: trailing Punkt entfernen
 
 # Fachbegriffe die Whisper korrekt erkennen soll (biased den Decoder, kein Performance-Impact)
-INITIAL_PROMPT = "CLAUDE.md, Whisper, faster-whisper, Python, CUDA, RTX 4060, committe, pushe"
+INITIAL_PROMPT = "CLAUDE.md, Whisper, faster-whisper, Python, CUDA, RTX 4060, committe, pushe, Punkt, YOLO, TryoTrix, CMD, committen, pushen, Commit, Push"
 
 # Gesprochene Satzzeichen → echte Zeichen (Regex-Pattern, case-insensitive)
 # Kommas/Leerzeichen vor und nach dem Wort werden mit-konsumiert
@@ -70,6 +70,17 @@ SPOKEN_PUNCTUATION = {
     r'[,\s]*[-–]?\s*Gedankenstrich[,\s]*': ' - ',
     r'[,\s]*[-–]?\s*(?:Schrägstrich|Slash)[,\s]*': '/',
     r'[,\s]*[-–]?\s*Anführungszeichen[,\s]*': '"',
+    r'[,\s]*[-–]?\s*Punkt': '.',
+}
+
+# Wortkorrekturen: Whisper-Fehlerkennungen → richtige Schreibweise (Regex, case-insensitive)
+WORD_CORRECTIONS = {
+    r'\bTrial[\s-]?Tricks?\b': 'TryoTrix',
+    r'\bTry[\s-]?o[\s-]?Tricks?\b': 'TryoTrix',
+    r'\bTryo[\s-]?Tricks?\b': 'TryoTrix',
+    r'\bTry[\s-]?your[\s-]?Tricks?\b': 'TryoTrix',
+    r'\bTriotricks?\b': 'TryoTrix',
+    r'\bTryotricks?\b': 'TryoTrix',
 }
 
 # Bekannte Whisper-Halluzinationen bei Stille (lowercase fuer Vergleich)
@@ -220,6 +231,22 @@ def play_stop_sound():
     winsound.Beep(500, 100)
 
 
+def play_ready_sound():
+    """Sanfter Ready-Chime nach Modell-Laden (nur beim Start)."""
+    try:
+        sr = 44100
+        # Zwei aufsteigende Töne: G5 → C6 (sanftes "ding-ding")
+        t1 = np.linspace(0, 0.12, int(sr * 0.12), False)
+        t2 = np.linspace(0, 0.25, int(sr * 0.25), False)
+        note1 = np.sin(2 * np.pi * 784 * t1) * np.exp(-t1 * 12)  # G5, kurz
+        note2 = np.sin(2 * np.pi * 1047 * t2) * np.exp(-t2 * 6)  # C6, klingt nach
+        gap = np.zeros(int(sr * 0.04))  # 40ms Pause
+        chime = np.concatenate([note1, gap, note2]) * 0.15  # Leise
+        sd.play(chime.astype(np.float32), sr)
+    except Exception:
+        pass  # Sound ist nice-to-have, kein Crash bei Problemen
+
+
 def filter_hallucinations(segments):
     """Whisper-Halluzinationen filtern (Stille-Phantome und bekannte Phrasen)."""
     filtered = []
@@ -256,6 +283,13 @@ def apply_spoken_punctuation(text):
         text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
     text = re.sub(r'  +', ' ', text)  # Doppelte Leerzeichen bereinigen
     return text.strip()
+
+
+def apply_word_corrections(text):
+    """Whisper-Fehlerkennungen durch korrekte Schreibweise ersetzen."""
+    for pattern, replacement in WORD_CORRECTIONS.items():
+        text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
+    return text
 
 
 def remove_trailing_period(text):
@@ -1159,6 +1193,7 @@ def load_model():
         load_time = time.time() - t0
         append_to_history(f"[STARTUP] Modell geladen in {load_time:.1f}s")
         update_tray("Bereit (CTRL+ALT+D)", create_icon_idle())
+        play_ready_sound()
     except Exception:
         # Fehler in Logdatei schreiben (pythonw hat keine Konsole)
         log_path = os.path.join(os.path.dirname(__file__), "whisper-error.log")
@@ -1267,6 +1302,7 @@ def stop_recording_and_transcribe():
         parts = filter_hallucinations(segments_list)
         text = " ".join(parts).strip()
         text = apply_spoken_punctuation(text)
+        text = apply_word_corrections(text)
         text = remove_trailing_period(text)
 
         # Performance-Log

@@ -45,7 +45,9 @@ The installer will:
 1. Check for Python, pip, and NVIDIA GPU
 2. Create a project-local virtual environment in `.venv`
 3. Install all Python packages into `.venv`
-4. Create an autostart entry using `.venv\Scripts\pythonw.exe`
+4. Ask whether you want autostart at Windows login
+   If enabled, create an autostart entry using `.venv\Scripts\pythonw.exe`
+   If disabled, you can launch manually via `manual-launch.bat`
 5. Download the Whisper model (~3 GB, one-time)
 6. Start the dictation tool
 

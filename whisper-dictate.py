@@ -1,5 +1,5 @@
 """
-Whisper Dictation Tool - Speak & Insert Text
+Whisper Diktiertool - Dictation Tool - Speak & Insert Text
 ============================================
 Press CTRL+ALT+D to start/stop recording.
 Runs as a system tray icon (no taskbar entry).

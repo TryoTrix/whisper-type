@@ -13,13 +13,14 @@
 | `whisper-restart.bat` | Stops running instance and starts it again (kill + wait + start) |
 | `whisper-transcribe.py` | Audio file to text (CLI tool, no hotkey) |
 | `install.bat` | Setup for new PCs: packages, autostart, model download |
+| `uninstall.bat` | Cleanup tool: removes autostart and optionally logs/model cache |
 | `whisper-config.json` | Persistent settings (calm_mode etc.), created automatically |
 | `whisper-error.log` | Created on CUDA/model errors (only when an error occurs) |
 | `whisper-history.log` | Transcription log: every dictation with timestamp (append, UTF-8) |
 
 ---
 
-## Whisper Dictation Tool (`whisper-dictate.py`)
+## Whisper Diktiertool - Dictation Tool (`whisper-dictate.py`)
 
 ### Shortcuts
 
@@ -221,12 +222,26 @@ CUDA/cuDNN are installed automatically with `faster-whisper`.
 ### Installation (new PC)
 Copy folder and run `install.bat`. Script does:
 1. Checks Python, pip, and NVIDIA GPU
-2. Installs all pip packages
-3. Creates autostart via Registry Run key (HKCU)
-4. Downloads Whisper model (~3 GB for large-v3, first start)
-5. Starts dictation tool
+2. Creates a project-local virtual environment in `.venv`
+3. Installs all pip packages into `.venv`
+4. Asks whether autostart should be enabled
+   If enabled, creates autostart via Registry Run key (HKCU)
+   If disabled, use `manual-launch.bat` after login to start manually
+5. Downloads Whisper model (~3 GB for large-v3, first start)
+6. Starts dictation tool
 
 Requirements: Python 3.12+ and NVIDIA GPU with current driver.
+
+### Uninstall / Cleanup
+Run `uninstall.bat` from the project folder.
+
+What it does:
+1. Removes the `WhisperDiktiertool` Run key from HKCU (if present)
+2. Removes old Startup `.lnk` and `StartupApproved` ghost entry
+3. Asks whether to keep local data files (logs/config/history)
+4. Asks whether to keep downloaded Whisper model cache
+5. Removes project-local `.venv` and Python `__pycache__` folders
+6. Optionally removes desktop `Whisper Restart.lnk`
 
 ---
 

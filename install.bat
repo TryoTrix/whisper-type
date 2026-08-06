@@ -8,7 +8,7 @@ echo ============================================
 echo.
 
 :: Check whether started as admin (keyboard library may need it)
-echo [1/5] Checking prerequisites...
+echo [1/6] Checking prerequisites...
 echo.
 
 :: Check Python
@@ -23,10 +23,9 @@ if errorlevel 1 (
 )
 for /f "tokens=2" %%v in ('python --version 2^>^&1') do echo   Found Python %%v
 
-:: Check pip
-pip --version >nul 2>&1
+python -m pip --version >nul 2>&1
 if errorlevel 1 (
-    echo [ERROR] pip is not available.
+    echo [ERROR] pip is not available for this Python installation.
     echo.
     pause
     exit /b 1
@@ -48,30 +47,54 @@ if errorlevel 1 (
 )
 
 echo.
-echo [2/5] Installing Python packages...
+echo [2/6] Creating virtual environment...
 echo.
-pip install faster-whisper sounddevice keyboard pyperclip pystray Pillow
+if not exist "%~dp0.venv\Scripts\python.exe" (
+    python -m venv "%~dp0.venv"
+    if errorlevel 1 (
+        echo [ERROR] Failed to create virtual environment at .venv
+        echo.
+        pause
+        exit /b 1
+    )
+    echo   Created .venv
+) else (
+    echo   Reusing existing .venv
+)
+
+set "VENV_PY=%~dp0.venv\Scripts\python.exe"
+set "VENV_PYTHONW=%~dp0.venv\Scripts\pythonw.exe"
+
+echo.
+echo [3/6] Installing Python packages in .venv...
+echo.
+"%VENV_PY%" -m pip install --upgrade pip
+if errorlevel 1 (
+    echo.
+    echo [WARNING] Could not upgrade pip inside .venv.
+    echo           Continuing with current pip version.
+)
+
+"%VENV_PY%" -m pip install faster-whisper sounddevice keyboard pyperclip pystray Pillow
 if errorlevel 1 (
     echo.
     echo [ERROR] Package installation failed.
-    echo          Try: pip install --upgrade pip
+    echo          Try: "%VENV_PY%" -m pip install --upgrade pip
     echo.
     pause
     exit /b 1
 )
 
 echo.
-echo [3/5] Creating autostart (Registry Run key)...
+echo [4/6] Creating autostart (Registry Run key)...
 echo.
 
-:: Resolve pythonw.exe path dynamically
-for /f "delims=" %%p in ('python -c "import sys,os;print(os.path.join(os.path.dirname(sys.executable),'pythonw.exe'))"') do set "PYTHONW=%%p"
 set "SCRIPT_DIR=%~dp0"
 :: Remove trailing backslash
 if "%SCRIPT_DIR:~-1%"=="\" set "SCRIPT_DIR=%SCRIPT_DIR:~0,-1%"
 
 :: Set Registry Run key (HKCU, no admin required)
-reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v WhisperDiktiertool /t REG_SZ /d "\"%PYTHONW%\" \"%SCRIPT_DIR%\whisper-dictate.py\"" /f >nul 2>&1
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v WhisperDiktiertool /t REG_SZ /d "\"%VENV_PYTHONW%\" \"%SCRIPT_DIR%\whisper-dictate.py\"" /f >nul 2>&1
 
 if not errorlevel 1 (
     echo   Autostart entry created (Registry Run key)
@@ -90,11 +113,11 @@ if exist "%OLD_LNK%" (
 reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\StartupFolder" /v "Whisper Diktiertool.lnk" /f >nul 2>&1
 
 echo.
-echo [4/5] Downloading Whisper model (large-v3-turbo, ~3 GB)...
+echo [5/6] Downloading Whisper model (large-v3-turbo, ~3 GB)...
 echo        This can take a few minutes on first run.
 echo.
 
-python -c "from faster_whisper import WhisperModel; print('Loading model...'); m = WhisperModel('large-v3-turbo', device='cuda', compute_type='int8_float16'); print('Model loaded successfully!')"
+"%VENV_PY%" -c "from faster_whisper import WhisperModel; print('Loading model...'); m = WhisperModel('large-v3-turbo', device='cuda', compute_type='int8_float16'); print('Model loaded successfully!')"
 if errorlevel 1 (
     echo.
     echo [WARNING] Could not load model on GPU.
@@ -103,9 +126,9 @@ if errorlevel 1 (
 )
 
 echo.
-echo [5/5] Starting Whisper Dictation Tool...
+echo [6/6] Starting Whisper Dictation Tool...
 echo.
-start "" pythonw "%~dp0whisper-dictate.py"
+start "" "%VENV_PYTHONW%" "%~dp0whisper-dictate.py"
 
 echo ============================================
 echo   Setup complete!
@@ -115,6 +138,7 @@ echo   Hotkey:    CTRL+ALT+D (start/stop recording)
 echo   Tray icon: Gray = loading, Green = ready, Red = recording
 echo   Tray icon: Left click = dashboard, right click = dashboard
 echo   Autostart: Enabled (starts at Windows login)
+echo   Python env: Project-local .venv
 echo.
 echo   The dictation tool is now running in the system tray.
 echo   Wait until the icon turns green, then press CTRL+ALT+D.

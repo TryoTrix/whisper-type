@@ -43,10 +43,11 @@ install.bat
 
 The installer will:
 1. Check for Python, pip, and NVIDIA GPU
-2. Install all Python packages
-3. Create an autostart shortcut
-4. Download the Whisper model (~3 GB, one-time)
-5. Start the dictation tool
+2. Create a project-local virtual environment in `.venv`
+3. Install all Python packages into `.venv`
+4. Create an autostart entry using `.venv\Scripts\pythonw.exe`
+5. Download the Whisper model (~3 GB, one-time)
+6. Start the dictation tool
 
 ## Usage
 

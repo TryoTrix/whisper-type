@@ -8,6 +8,7 @@ whisper-config.json
 # Python
 __pycache__/
 *.pyc
+.venv/
 
 # IDE
 .vscode/

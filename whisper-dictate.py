@@ -1,11 +1,11 @@
 """
-Whisper Diktiertool - Sprechen & Text einfuegen
-================================================
-Druecke CTRL+ALT+D zum Starten/Stoppen der Aufnahme.
-Laeuft als System Tray Icon (kein Taskleisten-Eintrag).
-Nur eine Instanz laeuft gleichzeitig (Mutex-geschuetzt).
+Whisper Dictation Tool - Speak & Insert Text
+============================================
+Press CTRL+ALT+D to start/stop recording.
+Runs as a system tray icon (no taskbar entry).
+Only one instance can run at a time (mutex protected).
 
-Starten:
+Start:
     pythonw whisper-dictate.py
 """
 
@@ -14,12 +14,12 @@ import os
 import ctypes
 from ctypes import wintypes
 
-# Single-Instance: Windows Mutex verhindert Doppelstart
+# Single instance: Windows mutex prevents duplicate launches
 _mutex = ctypes.windll.kernel32.CreateMutexW(None, True, "WhisperDiktiertool_Mutex")
 if ctypes.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
     sys.exit(0)
 
-# NVIDIA DLLs fuer CUDA sichtbar machen (cublas, cudnn)
+# Make NVIDIA DLLs visible for CUDA (cublas, cudnn)
 _nvidia_base = os.path.join(
     os.path.dirname(sys.executable), "Lib", "site-packages", "nvidia"
 )
@@ -29,7 +29,7 @@ for _lib in ("cublas", "cudnn"):
     if os.path.isdir(_dll_dir):
         os.add_dll_directory(_dll_dir)
         _dll_dirs.append(_dll_dir)
-# Auch PATH erweitern (CTranslate2 laedt DLLs ueber LoadLibrary)
+# Also extend PATH (CTranslate2 loads DLLs via LoadLibrary)
 if _dll_dirs:
     os.environ["PATH"] = os.pathsep.join(_dll_dirs) + os.pathsep + os.environ.get("PATH", "")
 
@@ -48,20 +48,20 @@ from PIL import Image, ImageDraw, ImageFilter
 import winsound
 
 # ============================================================
-# KONFIGURATION - Hier anpassen
+# CONFIGURATION - Edit here
 # ============================================================
 HOTKEY = "ctrl+alt+d"
-SAMPLE_RATE = 16000      # Whisper erwartet 16kHz
-MODEL_SIZE = "large-v3-turbo"  # Schneller (~3-5s statt ~12-16s), gute Qualitaet
-NO_SPEECH_THRESHOLD = None  # Deaktiviert (no_speech_prob ist bei Deutsch unzuverlaessig)
-DEBUG_TRANSCRIPTION = True   # Segment-Details ins History-Log schreiben
-SHORT_TEXT_MAX_WORDS = 3     # Bei <= N Woertern: trailing Punkt entfernen
+SAMPLE_RATE = 16000      # Whisper expects 16kHz
+MODEL_SIZE = "large-v3-turbo"  # Faster (~3-5s instead of ~12-16s), good quality
+NO_SPEECH_THRESHOLD = None  # Disabled (no_speech_prob is unreliable for German)
+DEBUG_TRANSCRIPTION = True   # Write segment details to history log
+SHORT_TEXT_MAX_WORDS = 3     # For <= N words: remove trailing period
 
-# Fachbegriffe die Whisper korrekt erkennen soll (biased den Decoder, kein Performance-Impact)
+# Domain terms Whisper should recognize correctly (biases decoder, no performance impact)
 INITIAL_PROMPT = "CLAUDE.md, Whisper, faster-whisper, Python, CUDA, RTX 4060, committe, pushe, Punkt, YOLO, TryoTrix, CMD, committen, pushen, Commit, Push"
 
-# Gesprochene Satzzeichen → echte Zeichen (Regex-Pattern, case-insensitive)
-# Kommas/Leerzeichen vor und nach dem Wort werden mit-konsumiert
+# Spoken punctuation -> real characters (regex patterns, case-insensitive)
+# Commas/spaces before and after the word are consumed as part of the match
 SPOKEN_PUNCTUATION = {
     r'[,\s]*[-–]?\s*Doppelpunkt[,\s]*': ': ',
     r'[,\s]*[-–]?\s*Semikolon[,\s]*': '; ',
@@ -73,7 +73,7 @@ SPOKEN_PUNCTUATION = {
     r'[,\s]*[-–]?\s*Punkt': '.',
 }
 
-# Wortkorrekturen: Whisper-Fehlerkennungen → richtige Schreibweise (Regex, case-insensitive)
+# Word corrections: common Whisper mistakes -> correct spelling (regex, case-insensitive)
 WORD_CORRECTIONS = {
     r'\bTrial[\s-]?Tricks?\b': 'TryoTrix',
     r'\bTry[\s-]?o[\s-]?Tricks?\b': 'TryoTrix',
@@ -83,7 +83,7 @@ WORD_CORRECTIONS = {
     r'\bTryotricks?\b': 'TryoTrix',
 }
 
-# Bekannte Whisper-Halluzinationen bei Stille (lowercase fuer Vergleich)
+# Known Whisper hallucinations in silence (lowercase for matching)
 HALLUCINATION_PHRASES = {
     "untertitelung von zdf",
     "untertitel von zdf",
@@ -107,24 +107,24 @@ HALLUCINATION_PHRASES = {
 }
 # ============================================================
 
-# Win32 API fuer Fensterverwaltung
+# Win32 API for window management
 user32 = ctypes.windll.user32
 
 # Globale Variablen
 recording = False
 audio_chunks = []
 audio_overflow_count = 0
-audio_level = 0.0  # RMS-Pegel 0.0-1.0, wird in audio_callback aktualisiert
+audio_level = 0.0  # RMS level 0.0-1.0, updated in audio_callback
 model = None
 stream = None
 target_window = None
 tray_icon = None
-calm_mode = False  # True = statisches Mic-Icon statt Electric Border
-_dashboard_toggle = threading.Event()  # Signal von Tray (Links-Klick) an tkinter-Thread
+calm_mode = False  # True = static mic icon instead of Electric Border
+_dashboard_toggle = threading.Event()  # Signal from tray (left click) to tkinter thread
 
 
 def create_icon_idle():
-    """Gruenes Icon = bereit."""
+    """Green icon = ready."""
     img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
     draw.ellipse([8, 8, 56, 56], fill="#22c55e")
@@ -132,7 +132,7 @@ def create_icon_idle():
 
 
 def create_icon_recording():
-    """Rotes Icon = Aufnahme laeuft."""
+    """Red icon = recording in progress."""
     img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
     draw.ellipse([8, 8, 56, 56], fill="#ef4444")
@@ -140,7 +140,7 @@ def create_icon_recording():
 
 
 def create_icon_loading():
-    """Graues Icon = Modell wird geladen."""
+    """Gray icon = model loading."""
     img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
     draw.ellipse([8, 8, 56, 56], fill="#9ca3af")
@@ -148,7 +148,7 @@ def create_icon_loading():
 
 
 def get_today_stats():
-    """Heutige Diktate zaehlen und Audio-Dauer summieren aus whisper-history.log."""
+    """Count today's dictations and sum audio duration from whisper-history.log."""
     try:
         from datetime import datetime
         today = datetime.now().strftime("%Y-%m-%d")
@@ -159,7 +159,7 @@ def get_today_stats():
         total_seconds = 0.0
         with open(log_path, "r", encoding="utf-8") as f:
             for line in f:
-                # Nur echte Diktate: [2026-02-23 15:47:45] (14.8s) Text...
+                # Only real dictations: [2026-02-23 15:47:45] (14.8s) Text...
                 if not line.startswith(f"[{today}"):
                     continue
                 m = re.match(r'\[.+?\] \((\d+\.?\d*)s\) .+', line)
@@ -172,10 +172,10 @@ def get_today_stats():
 
 
 def get_recent_logs(max_entries=20):
-    """Letzte Diktate aus whisper-history.log fuer Dashboard-Anzeige.
+    """Get recent dictations from whisper-history.log for the dashboard.
 
-    Filtert DEBUG/PERF/STARTUP-Zeilen heraus, parst nur echte Diktate.
-    Liest nur die letzten 500 Zeilen fuer Performance bei grossen Logdateien.
+    Filters out DEBUG/PERF/STARTUP lines and parses only real dictations.
+    Reads only the last 500 lines for performance on large log files.
     """
     log_path = os.path.join(os.path.dirname(__file__), "whisper-history.log")
     if not os.path.exists(log_path):
@@ -187,7 +187,7 @@ def get_recent_logs(max_entries=20):
         for line in lines[-500:]:
             if any(tag in line for tag in ("[DEBUG]", "[PERF]", "[STARTUP]", "[FEHLER]", "OVERFLOW")):
                 continue
-            # Neues Format mit Dauer: [2026-02-23 14:32:05] (12.3s) Text...
+            # New format with duration: [2026-02-23 14:32:05] (12.3s) Text...
             m = re.match(r'\[(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2})\] \((\d+\.?\d*)s\) (.+)', line)
             if m:
                 entries.append({
@@ -195,7 +195,7 @@ def get_recent_logs(max_entries=20):
                     "duration": float(m.group(3)), "text": m.group(4).strip()
                 })
                 continue
-            # Altes Format ohne Dauer: [2026-02-17 23:47:02] Text...
+            # Old format without duration: [2026-02-17 23:47:02] Text...
             m = re.match(r'\[(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2})\] (.+)', line)
             if m:
                 text = m.group(3).strip()
@@ -210,7 +210,7 @@ def get_recent_logs(max_entries=20):
 
 
 def update_tray(status_text, icon_img):
-    """Tray-Icon und Tooltip aktualisieren."""
+    """Update tray icon and tooltip."""
     if tray_icon:
         tray_icon.icon = icon_img
         count, total_sec = get_today_stats()
@@ -222,47 +222,47 @@ def update_tray(status_text, icon_img):
 
 
 def play_start_sound():
-    """Kurzer hoher Ton = Aufnahme gestartet."""
+    """Short high beep = recording started."""
     winsound.Beep(800, 100)
 
 
 def play_stop_sound():
-    """Kurzer tiefer Ton = Aufnahme gestoppt."""
+    """Short low beep = recording stopped."""
     winsound.Beep(500, 100)
 
 
 def play_ready_sound():
-    """Sanfter Ready-Chime nach Modell-Laden (nur beim Start)."""
+    """Soft ready chime after model load (startup only)."""
     try:
         sr = 44100
-        # Zwei aufsteigende Töne: G5 → C6 (sanftes "ding-ding")
+        # Two ascending notes: G5 -> C6 (soft "ding-ding")
         t1 = np.linspace(0, 0.12, int(sr * 0.12), False)
         t2 = np.linspace(0, 0.25, int(sr * 0.25), False)
         note1 = np.sin(2 * np.pi * 784 * t1) * np.exp(-t1 * 12)  # G5, kurz
-        note2 = np.sin(2 * np.pi * 1047 * t2) * np.exp(-t2 * 6)  # C6, klingt nach
-        gap = np.zeros(int(sr * 0.04))  # 40ms Pause
-        chime = np.concatenate([note1, gap, note2]) * 0.15  # Leise
+        note2 = np.sin(2 * np.pi * 1047 * t2) * np.exp(-t2 * 6)  # C6, lingering tail
+        gap = np.zeros(int(sr * 0.04))  # 40ms pause
+        chime = np.concatenate([note1, gap, note2]) * 0.15  # Quiet
         sd.play(chime.astype(np.float32), sr)
     except Exception:
-        pass  # Sound ist nice-to-have, kein Crash bei Problemen
+        pass  # Sound is nice-to-have, never crash on issues
 
 
 def filter_hallucinations(segments):
-    """Whisper-Halluzinationen filtern (Stille-Phantome und bekannte Phrasen)."""
+    """Filter Whisper hallucinations (silence phantoms and known phrases)."""
     filtered = []
     debug_lines = []
     for seg in segments:
         text = seg.text.strip()
         no_speech = getattr(seg, "no_speech_prob", 0.0)
-        # no_speech_prob Filterung deaktiviert: Whisper gibt bei Deutsch oft 0.97
-        # fuer klar gesprochene Saetze aus. vad_filter=True macht bereits Audio-VAD.
+        # no_speech_prob filtering disabled: in German, Whisper often returns 0.97
+        # for clearly spoken sentences. vad_filter=True already performs audio VAD.
         if NO_SPEECH_THRESHOLD is not None and no_speech > NO_SPEECH_THRESHOLD:
             if DEBUG_TRANSCRIPTION:
                 debug_lines.append(f"  SKIP (no_speech={no_speech:.2f}): {text}")
             continue
         if not text:
             continue
-        # Bekannte Halluzinationen pruefen
+        # Check known hallucinations
         text_lower = text.lower().rstrip(".!?,;:")
         if text_lower in HALLUCINATION_PHRASES:
             if DEBUG_TRANSCRIPTION:
@@ -271,36 +271,36 @@ def filter_hallucinations(segments):
         if DEBUG_TRANSCRIPTION:
             debug_lines.append(f"  KEEP (no_speech={no_speech:.2f}): {text}")
         filtered.append(text)
-    # Debug-Info ins Log schreiben
+    # Write debug info to log
     if DEBUG_TRANSCRIPTION and debug_lines:
         append_to_history("[DEBUG] Segmente:\n" + "\n".join(debug_lines))
     return filtered
 
 
 def apply_spoken_punctuation(text):
-    """Gesprochene Satzzeichen durch echte Zeichen ersetzen."""
+    """Replace spoken punctuation with real symbols."""
     for pattern, replacement in SPOKEN_PUNCTUATION.items():
         text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
-    text = re.sub(r'  +', ' ', text)  # Doppelte Leerzeichen bereinigen
+    text = re.sub(r'  +', ' ', text)  # Collapse repeated spaces
     return text.strip()
 
 
 def apply_word_corrections(text):
-    """Whisper-Fehlerkennungen durch korrekte Schreibweise ersetzen."""
+    """Replace Whisper mistakes with corrected spelling."""
     for pattern, replacement in WORD_CORRECTIONS.items():
         text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
     return text
 
 
 def remove_trailing_period(text):
-    """Trailing Punkt entfernen bei kurzen Texten (1-3 Woerter)."""
+    """Remove trailing period for short texts (1-3 words)."""
     if len(text.split()) <= SHORT_TEXT_MAX_WORDS and text.endswith('.'):
         return text[:-1]
     return text
 
 
 def append_to_history(text, duration=0):
-    """Transkription mit Timestamp und Dauer in whisper-history.log speichern."""
+    """Save transcription with timestamp and duration in whisper-history.log."""
     try:
         from datetime import datetime
         log_path = os.path.join(os.path.dirname(__file__), "whisper-history.log")
@@ -313,7 +313,7 @@ def append_to_history(text, duration=0):
 
 
 def load_config():
-    """Config aus whisper-config.json laden. Gibt Defaults zurueck falls nicht vorhanden."""
+    """Load config from whisper-config.json. Falls back to defaults if missing."""
     global calm_mode
     config_path = os.path.join(os.path.dirname(__file__), "whisper-config.json")
     try:
@@ -325,7 +325,7 @@ def load_config():
 
 
 def save_config():
-    """Aktuelle Config in whisper-config.json speichern."""
+    """Save current config to whisper-config.json."""
     config_path = os.path.join(os.path.dirname(__file__), "whisper-config.json")
     try:
         config = {"calm_mode": calm_mode}
@@ -336,15 +336,15 @@ def save_config():
 
 
 def ensure_autostart():
-    """Registry Run-Key erstellen/aktualisieren + alte .lnk aufraeumen."""
+    """Create/update Registry Run key and clean up old .lnk artifacts."""
     import winreg
     try:
-        # Pfade dynamisch ermitteln
+        # Resolve paths dynamically
         pythonw = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
         script = os.path.abspath(__file__)
         expected_value = f'"{pythonw}" "{script}"'
 
-        # Registry Run-Key pruefen und ggf. setzen
+        # Check Registry Run key and set if needed
         reg_key = r"Software\Microsoft\Windows\CurrentVersion\Run"
         reg_name = "WhisperDiktiertool"
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, reg_key, 0,
@@ -352,23 +352,23 @@ def ensure_autostart():
             try:
                 current_value, _ = winreg.QueryValueEx(key, reg_name)
                 if current_value == expected_value:
-                    # Bereits korrekt, nur Cleanup pruefen
+                    # Already correct, only verify cleanup
                     _cleanup_old_autostart()
                     return
             except FileNotFoundError:
-                pass  # Eintrag existiert noch nicht
+                pass  # Entry does not exist yet
             winreg.SetValueEx(key, reg_name, 0, winreg.REG_SZ, expected_value)
 
-        # Alte .lnk und StartupApproved aufraeumen
+        # Clean up old .lnk and StartupApproved entry
         _cleanup_old_autostart()
     except Exception:
         pass
 
 
 def _cleanup_old_autostart():
-    """Alte Startup-Verknuepfung und StartupApproved-Geistereintrag entfernen."""
+    """Remove old startup shortcut and StartupApproved ghost entry."""
     import winreg
-    # Alte .lnk loeschen
+    # Delete old .lnk
     try:
         startup_dir = os.path.join(os.environ["APPDATA"],
                                    "Microsoft", "Windows", "Start Menu", "Programs", "Startup")
@@ -377,7 +377,7 @@ def _cleanup_old_autostart():
             os.remove(lnk_path)
     except Exception:
         pass
-    # StartupApproved-Geistereintrag entfernen (verhindert toten Eintrag im Task Manager)
+    # Remove StartupApproved ghost entry (prevents dead entry in Task Manager)
     try:
         approved_key = r"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\StartupFolder"
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, approved_key, 0,
@@ -388,7 +388,7 @@ def _cleanup_old_autostart():
 
 
 def get_monitors():
-    """Alle angeschlossenen Monitore ermitteln (Position und Groesse)."""
+    """Enumerate all connected monitors (position and size)."""
     monitors = []
 
     MonitorEnumProc = ctypes.WINFUNCTYPE(
@@ -409,13 +409,13 @@ def get_monitors():
 
 
 class RecordingOverlay:
-    """Mikrofon-Icon mit Electric Border Effect (pre-gerendert) + roter Balken."""
+    """Microphone icon with pre-rendered Electric Border effect + red bar."""
 
     BAR_HEIGHT = 8
-    DISPLAY_SIZE = 160   # Fenster-Groesse (Mic 100px + Platz fuer Electric Border + Glow)
-    RENDER_SIZE = 320    # 2x Supersampling
-    MIC_DISPLAY = 100    # Mic-Icon Anzeige-Groesse
-    TRANS_COLOR = (1, 1, 1)  # RGB fuer Transparenz
+    DISPLAY_SIZE = 160   # Window size (100px mic + room for Electric Border + glow)
+    RENDER_SIZE = 320    # 2x supersampling
+    MIC_DISPLAY = 100    # Display size of mic icon
+    TRANS_COLOR = (1, 1, 1)  # RGB key color for transparency
     NUM_FRAMES = 90      # 3s Animation-Loop bei 30fps
 
     def __init__(self):
@@ -424,28 +424,28 @@ class RecordingOverlay:
         self._orb_win = None
         self._orb_label = None
         self._orb_photo = None
-        self._mic_rgba = None       # Vorgerendertes Mic-Icon (RGBA, Render-Groesse)
-        self._frames = None         # Liste von pre-gerenderten RGB Frames
-        self._frames_ready = False  # True wenn Pre-Rendering abgeschlossen
-        self._static_frame = None   # Fallback-Frame (nur Mic, keine Electric Border)
+        self._mic_rgba = None       # Pre-rendered mic icon (RGBA, render size)
+        self._frames = None         # List of pre-rendered RGB frames
+        self._frames_ready = False  # True when pre-rendering is complete
+        self._static_frame = None   # Fallback frame (mic only, no Electric Border)
         self._visible = False
         self._t0 = 0
         self._dashboard_win = None
         self._dashboard_visible = False
 
     def _create_mic_icon(self):
-        """Original Mikrofon-Icon als RGBA, 8x Supersampling fuer glatte Raender.
+        """Original microphone icon as RGBA, 8x supersampling for smooth edges.
 
-        Rendert bei 800x800 und skaliert auf Render-Groesse (200x200).
-        Identisches Design wie das bisherige Icon (roter Gradient-Kreis, weisses Mic).
+        Renders at 800x800 and scales to render size (200x200).
+        Same design as the previous icon (red gradient circle, white mic).
         """
         hs = 800
         img = Image.new("RGBA", (hs, hs), (0, 0, 0, 0))
         draw = ImageDraw.Draw(img)
         cx = 400
 
-        # --- Kreis: Smooth Gradient (viele Stufen) ---
-        r_outer = 400  # Volle Groesse, fuellt Icon-Bounding-Box komplett
+        # --- Circle: smooth gradient (many steps) ---
+        r_outer = 400  # Full size, fills icon bounding box completely
         steps = 40
         for i in range(steps):
             t = i / (steps - 1)
@@ -457,17 +457,17 @@ class RecordingOverlay:
                           cx + r_outer - inset, cx + r_outer - inset],
                          fill=(r, g, b))
 
-        # --- Glossy Highlight (obere Haelfte, subtil) ---
+        # --- Glossy highlight (upper half, subtle) ---
         highlight = Image.new("RGBA", (hs, hs), (0, 0, 0, 0))
         hdraw = ImageDraw.Draw(highlight)
         hdraw.ellipse([160, 72, hs - 160, cx + 20], fill=(255, 255, 255, 30))
         img = Image.alpha_composite(img, highlight)
         draw = ImageDraw.Draw(img)
 
-        # --- Mikrofon ---
+        # --- Microphone ---
         w = (255, 255, 255)
 
-        # Schatten
+        # Shadow
         sh = Image.new("RGBA", (hs, hs), (0, 0, 0, 0))
         shd = ImageDraw.Draw(sh)
         o = 10
@@ -479,24 +479,24 @@ class RecordingOverlay:
         img = Image.alpha_composite(img, sh)
         draw = ImageDraw.Draw(img)
 
-        # Kapsel
+        # Capsule
         draw.rounded_rectangle([cx-76, 176, cx+76, 432], radius=76, fill=w)
-        # U-Halterung
+        # U mount
         draw.arc([cx-136, 352, cx+136, 544], 0, 180, fill=w, width=24)
-        # Stiel
+        # Stem
         draw.line([cx, 544, cx, 600], fill=w, width=24)
-        # Basis
+        # Base
         draw.rounded_rectangle([cx-68, 588, cx+68, 616], radius=14, fill=w)
 
-        # Resize auf Render-Groesse (200x200 bei 320x320 Frame)
+        # Resize to render size (200x200 in a 320x320 frame)
         target = int(self.MIC_DISPLAY * self.RENDER_SIZE / self.DISPLAY_SIZE)
         return img.resize((target, target), Image.LANCZOS)
 
     def _generate_noise_texture(self, size, seed):
-        """Multi-Oktaven Rausch-Textur (size x size) fuer Pixel-Displacement.
+        """Multi-octave noise texture (size x size) for pixel displacement.
 
-        Erzeugt smooth, turbulenz-aehnliches Noise-Feld mit 5 Oktaven.
-        Verwendet nur numpy + PIL (keine externen Noise-Libraries).
+        Generates a smooth turbulence-like noise field with 5 octaves.
+        Uses only numpy + PIL (no external noise libraries).
         """
         rng = np.random.default_rng(seed)
         result = np.zeros((size, size), dtype=np.float32)
@@ -515,11 +515,11 @@ class RecordingOverlay:
         return result
 
     def _apply_displacement(self, img_arr, dx, dy):
-        """2D Pixel-Displacement mit bilinearer Interpolation (pure numpy).
+        """2D pixel displacement with bilinear interpolation (pure numpy).
 
-        Verschiebt jeden Pixel des Bildes unabhaengig basierend auf dx/dy Feldern.
-        Dies simuliert SVG feDisplacementMap: der Ring wird pro Pixel verzerrt,
-        nicht als Ganzes verschoben (wie bei der Polyline-Methode).
+        Shifts each image pixel independently based on dx/dy fields.
+        This simulates SVG feDisplacementMap: the ring is warped per pixel,
+        not moved as one piece (as in the polyline approach).
         """
         h, w = img_arr.shape[:2]
         ys, xs = np.mgrid[0:h, 0:w].astype(np.float32)
@@ -544,14 +544,14 @@ class RecordingOverlay:
         return np.clip(result, 0, 255).astype(np.uint8)
 
     def _make_display_frame(self, frame_rgba):
-        """RGBA Frame (RENDER_SIZE) zu RGB (DISPLAY_SIZE) mit Transparenz konvertieren.
+        """Convert RGBA frame (RENDER_SIZE) to RGB (DISPLAY_SIZE) with transparency.
 
-        Composited gegen Dunkelrot statt Schwarz/(1,1,1), damit halbtransparente
-        Glow-Randpixel als dunkles Rot erscheinen statt als fast-Schwarz.
+        Composite against dark red instead of black/(1,1,1), so semi-transparent
+        glow edge pixels appear dark red instead of near-black.
         """
         img = frame_rgba.resize((self.DISPLAY_SIZE, self.DISPLAY_SIZE), Image.LANCZOS)
         tc = self.TRANS_COLOR
-        # Gegen Dunkelrot compositen (halbtransparente Pixel → dunkles Rot statt Schwarz)
+        # Composite against dark red (semi-transparent pixels -> dark red, not black)
         comp_bg = Image.new("RGBA", (self.DISPLAY_SIZE, self.DISPLAY_SIZE), (80, 15, 15, 255))
         composited = Image.alpha_composite(comp_bg, img)
         alpha = img.split()[3]
@@ -561,30 +561,30 @@ class RecordingOverlay:
         return rgb
 
     def _prerender_frames(self):
-        """Electric Border Frames vorrendern (optimiert).
+        """Pre-render Electric Border frames (optimized).
 
-        Alle Blur-Layer werden VOR dem Loop zu 2 Composite-Bildern zusammengefuegt.
-        Pro Frame nur 2 Displacement-Ops (statt 6) und 0 Blur-Ops (statt 6+).
+        All blur layers are merged into 2 composite images BEFORE the loop.
+        Per frame: only 2 displacement ops (instead of 6) and 0 blur ops (instead of 6+).
         """
         t0 = time.time()
         rs = self.RENDER_SIZE  # 320
         cx = rs // 2  # 160
 
         mic_r = int(self.MIC_DISPLAY / 2 * rs / self.DISPLAY_SIZE)
-        border_r = mic_r + 1   # Ring sitzt direkt am Mic-Rand (fast kein Gap)
+        border_r = mic_r + 1   # Ring sits directly on mic edge (almost no gap)
         outer_r = border_r + 18
 
-        # --- Fill-Disc: Roter Hintergrund bis unter alle Rings ---
-        # Deckt den gesamten Bereich hinter den Rings ab, auch bei max. Displacement.
-        # Farbe passend zum Mic-Aussen-Gradient (205, 45, 45).
+        # --- Fill disc: red background under all rings ---
+        # Covers the full area behind rings, even at max displacement.
+        # Color matched to mic outer gradient (205, 45, 45).
         fill_disc = Image.new("RGBA", (rs, rs), (0, 0, 0, 0))
-        fill_r = outer_r + 20  # Grosszuegig bis weit unter den Outer Ring
+        fill_r = outer_r + 20  # Generous radius extending well below outer ring
         ImageDraw.Draw(fill_disc).ellipse(
             [cx - fill_r, cx - fill_r, cx + fill_r, cx + fill_r],
             fill=(200, 42, 42, 255))
         fill_disc = fill_disc.filter(ImageFilter.GaussianBlur(radius=8))
 
-        # --- Ring-Layer zeichnen ---
+        # --- Draw ring layers ---
         ring_core = Image.new("RGBA", (rs, rs), (0, 0, 0, 0))
         ImageDraw.Draw(ring_core).ellipse(
             [cx - border_r, cx - border_r, cx + border_r, cx + border_r],
@@ -615,8 +615,8 @@ class RecordingOverlay:
             [cx - outer_r, cx - outer_r, cx + outer_r, cx + outer_r],
             outline=(239, 60, 60, 120), width=8)
 
-        # --- Pre-Composite: Alle Layer VOR dem Loop zusammenfuegen + blurren ---
-        # Inner Composite (6 Layer → 1 Bild, nur 1 Displacement pro Frame)
+        # --- Pre-composite: merge all layers BEFORE loop and blur ---
+        # Inner composite (6 layers -> 1 image, only 1 displacement per frame)
         inner = Image.new("RGBA", (rs, rs), (0, 0, 0, 0))
         inner = Image.alpha_composite(inner, ring_ambient.filter(ImageFilter.GaussianBlur(radius=20)))
         inner = Image.alpha_composite(inner, ring_glow.filter(ImageFilter.GaussianBlur(radius=10)))
@@ -626,13 +626,13 @@ class RecordingOverlay:
         inner = Image.alpha_composite(inner, ring_core)
         inner_arr = np.array(inner).astype(np.float32)
 
-        # Outer Composite (2 Layer → 1 Bild, nur 1 Displacement pro Frame)
+        # Outer composite (2 layers -> 1 image, only 1 displacement per frame)
         outer = Image.new("RGBA", (rs, rs), (0, 0, 0, 0))
         outer = Image.alpha_composite(outer, ring_outer_glow.filter(ImageFilter.GaussianBlur(radius=8)))
         outer = Image.alpha_composite(outer, ring_outer)
         outer_arr = np.array(outer).astype(np.float32)
 
-        # --- Noise-Texturen ---
+        # --- Noise textures ---
         pad = 100
         tex_size = rs + pad * 2  # 520
         noise_tex_x = self._generate_noise_texture(tex_size, seed=42)
@@ -649,10 +649,10 @@ class RecordingOverlay:
         for fi in range(self.NUM_FRAMES):
             t = fi / self.NUM_FRAMES * 2 * math.pi
 
-            # Breathing Pulse (2 Pulse pro 3s Loop)
+            # Breathing pulse (2 pulses per 3s loop)
             breath = 0.85 + 0.15 * math.sin(t * 2)
 
-            # Core-Flash: 3 kurze Blitze pro Loop
+            # Core flash: 3 short flashes per loop
             flash = 0.0
             for flash_phase in [1.05, 3.14, 5.24]:
                 dist = abs(t - flash_phase)
@@ -661,7 +661,7 @@ class RecordingOverlay:
                 if dist < 0.3:
                     flash = max(flash, 1.0 - dist / 0.3)
 
-            # --- Inner Displacement ---
+            # --- Inner displacement ---
             ox = int(pad + pan_radius * math.cos(t))
             oy = int(pad + pan_radius * math.sin(t))
             dx = noise_tex_x[oy:oy+rs, ox:ox+rs] * disp_scale
@@ -670,7 +670,7 @@ class RecordingOverlay:
             oy2 = int(pad + pan_radius * math.sin(t + 0.8))
             dy = noise_tex_y[oy2:oy2+rs, ox2:ox2+rs] * disp_scale
 
-            # --- Outer Displacement ---
+            # --- Outer displacement ---
             oxa = int(pad + pan_radius * 0.7 * math.cos(t * 0.7 + 2.0))
             oya = int(pad + pan_radius * 0.7 * math.sin(t * 0.7))
             dx_out = noise_tex_x2[oya:oya+rs, oxa:oxa+rs] * disp_scale_outer
@@ -679,21 +679,21 @@ class RecordingOverlay:
             oyb = int(pad + pan_radius * 0.7 * math.sin(t * 0.9 + 0.5))
             dy_out = noise_tex_y2[oyb:oyb+rs, oxb:oxb+rs] * disp_scale_outer
 
-            # 2 Displacements (statt 6)
+            # 2 displacements (instead of 6)
             disp_inner = self._apply_displacement(inner_arr, dx, dy)
             disp_outer = self._apply_displacement(outer_arr, dx_out, dy_out)
 
-            # Breathing: Alpha des inneren Composites modulieren
+            # Breathing: modulate inner composite alpha
             if breath < 1.0:
                 disp_inner[:, :, 3] = (disp_inner[:, :, 3].astype(np.float32) * breath).astype(np.uint8)
 
-            # Frame zusammensetzen: Fill-Disc → Electric Rings → Mic
+            # Compose frame: fill disc -> electric rings -> mic
             frame = Image.new("RGBA", (rs, rs), (0, 0, 0, 0))
-            frame = Image.alpha_composite(frame, fill_disc)  # Gap fuellen
+            frame = Image.alpha_composite(frame, fill_disc)  # Fill the gap
             frame = Image.alpha_composite(frame, Image.fromarray(disp_outer, mode="RGBA"))
             frame = Image.alpha_composite(frame, Image.fromarray(disp_inner, mode="RGBA"))
 
-            # Core-Flash: Helligkeit kurz erhoehen
+            # Core flash: briefly boost brightness
             if flash > 0:
                 frame_arr = np.array(frame)
                 boost = 1.0 + flash * 0.35
@@ -701,7 +701,7 @@ class RecordingOverlay:
                     (frame_arr[:, :, :3].astype(np.float32) * boost)).astype(np.uint8)
                 frame = Image.fromarray(frame_arr, mode="RGBA")
 
-            # Mic-Icon (nicht displaced, bleibt scharf)
+            # Mic icon (not displaced, stays sharp)
             if self._mic_rgba:
                 mic_rs = self._mic_rgba.size[0]
                 offset = cx - mic_rs // 2
@@ -713,10 +713,10 @@ class RecordingOverlay:
         self._frames_ready = True
         duration = time.time() - t0
         append_to_history(
-            f"[STARTUP] Electric Border vorgerendert: {self.NUM_FRAMES} Frames in {duration:.1f}s")
+            f"[STARTUP] Electric Border pre-rendered: {self.NUM_FRAMES} frames in {duration:.1f}s")
 
     def start(self):
-        """Overlay in eigenem Thread starten."""
+        """Start overlay in a dedicated thread."""
         thread = threading.Thread(target=self._run, daemon=True)
         thread.start()
 
@@ -727,11 +727,11 @@ class RecordingOverlay:
         self.root = tk.Tk()
         self.root.withdraw()
 
-        # Mic-Icon vorrendern
+        # Pre-render mic icon
         self._mic_rgba = self._create_mic_icon()
         self._t0 = time.time()
 
-        # Statisches Fallback-Frame (nur Mic-Icon mit Fill-Disc, ohne Electric Border)
+        # Static fallback frame (mic icon with fill disc, no Electric Border)
         rs = self.RENDER_SIZE
         cx = rs // 2
         mic_r = int(self.MIC_DISPLAY / 2 * rs / self.DISPLAY_SIZE)
@@ -747,7 +747,7 @@ class RecordingOverlay:
             static.paste(self._mic_rgba, (offset, offset), self._mic_rgba)
         self._static_frame = self._make_display_frame(static)
 
-        # Pre-Rendering in separatem Thread starten (laeuft parallel zum Modell-Laden)
+        # Start pre-rendering in separate thread (runs in parallel with model load)
         prerender_thread = threading.Thread(target=self._prerender_frames, daemon=True)
         prerender_thread.start()
 
@@ -757,7 +757,7 @@ class RecordingOverlay:
         WS_EX_TRANSPARENT = 0x20
         WS_EX_LAYERED = 0x80000
 
-        # --- Rote Balken auf allen Monitoren ---
+        # --- Red bars on all monitors ---
         for i, (left, top, right, bottom) in enumerate(monitors):
             win = tk.Toplevel(self.root)
             title = f"WhisperREC_{i}"
@@ -769,7 +769,7 @@ class RecordingOverlay:
             width = right - left
             win.geometry(f"{width}x{self.BAR_HEIGHT}+{left}+{top}")
 
-            # Click-through
+            # Click-through behavior
             win.update_idletasks()
             hwnd = user32.FindWindowW(None, title)
             if hwnd:
@@ -779,7 +779,7 @@ class RecordingOverlay:
             win.withdraw()
             self._windows.append(win)
 
-        # --- Electric Border Fenster (160x160, oben links) ---
+        # --- Electric Border window (160x160, top-left) ---
         orb_win = tk.Toplevel(self.root)
         orb_title = "WhisperORB"
         orb_win.title(orb_title)
@@ -794,7 +794,7 @@ class RecordingOverlay:
         orb_y = primary[1] + self.BAR_HEIGHT + 8
         orb_win.geometry(f"{self.DISPLAY_SIZE}x{self.DISPLAY_SIZE}+{orb_x}+{orb_y}")
 
-        # Initialer leerer Frame
+        # Initial empty frame
         init_img = Image.new("RGB", (self.DISPLAY_SIZE, self.DISPLAY_SIZE), self.TRANS_COLOR)
         self._orb_photo = ImageTk.PhotoImage(init_img)
         self._orb_label = tk.Label(orb_win, image=self._orb_photo, bg=trans, bd=0,
@@ -811,12 +811,12 @@ class RecordingOverlay:
         orb_win.withdraw()
         self._orb_win = orb_win
 
-        # Polling: recording-Status alle 100ms pruefen
+        # Poll recording status every 100ms
         self._poll()
         self.root.mainloop()
 
     def _poll(self):
-        """Overlay ein-/ausblenden basierend auf Aufnahme-Status."""
+        """Show/hide overlay based on recording status."""
         if recording and not self._visible:
             for win in self._windows:
                 win.deiconify()
@@ -831,25 +831,25 @@ class RecordingOverlay:
                 self._orb_win.withdraw()
             self._visible = False
 
-        # Dashboard toggle (von Tray Links-Klick)
+        # Dashboard toggle (from tray left click)
         if _dashboard_toggle.is_set():
             _dashboard_toggle.clear()
             self._toggle_dashboard()
 
-        # Dashboard automatisch schliessen bei Aufnahme-Start
+        # Auto-close dashboard when recording starts
         if recording and self._dashboard_visible:
             self._destroy_dashboard()
 
         self.root.after(100, self._poll)
 
     def _animate(self):
-        """Animation: Pre-gerenderte Frames durchcyclen + Balken-Pulse bei ~30 FPS."""
+        """Animation: cycle pre-rendered frames + bar pulse at ~30 FPS."""
         if not self._visible:
             return
 
         from PIL import ImageTk
 
-        # Frame auswaehlen: Calm Mode = immer statisch, sonst Electric Border
+        # Select frame: Calm Mode = always static, otherwise Electric Border
         if calm_mode or not self._frames_ready:
             frame = self._static_frame
         else:
@@ -860,7 +860,7 @@ class RecordingOverlay:
         self._orb_photo = ImageTk.PhotoImage(frame)
         self._orb_label.configure(image=self._orb_photo)
 
-        # Balken-Pulse (subtil, ~3s Zyklus)
+        # Bar pulse (subtle, ~3s cycle)
         phase = time.time() * 2.0 * math.pi / 3.0
         factor = (math.sin(phase) + 1) / 2
         r = int(185 + factor * 54)
@@ -873,18 +873,18 @@ class RecordingOverlay:
         self.root.after(33, self._animate)  # ~30 FPS
 
     # ================================================================
-    # Dashboard Popup
+    # Dashboard popup
     # ================================================================
 
     def _toggle_dashboard(self):
-        """Dashboard ein-/ausblenden."""
+        """Toggle dashboard visibility."""
         if self._dashboard_visible:
             self._destroy_dashboard()
         else:
             self._create_dashboard()
 
     def _destroy_dashboard(self):
-        """Dashboard schliessen und aufraeumen."""
+        """Close dashboard and clean up."""
         if self._dashboard_win:
             try:
                 self._dashboard_win.destroy()
@@ -894,14 +894,14 @@ class RecordingOverlay:
         self._dashboard_visible = False
 
     def _create_dashboard(self):
-        """Premium Dashboard Popup mit Stats, Verlauf und Controls."""
+        """Premium dashboard popup with stats, history, and controls."""
         import tkinter as tk
 
         if self._dashboard_win:
             self._destroy_dashboard()
             return
 
-        # ── Design Tokens ──
+        # Design tokens
         BG = "#0c0c18"
         CARD = "#13132a"
         CARD_BORDER = "#222244"
@@ -925,23 +925,23 @@ class RecordingOverlay:
         win.attributes("-topmost", True)
         win.configure(bg=BORDER)
 
-        # Aeusserer Rahmen (1px Border)
+        # Outer frame (1px border)
         inner = tk.Frame(win, bg=BG)
         inner.pack(fill="both", expand=True, padx=1, pady=1)
 
-        # Rote Akzentlinie oben
+        # Red accent line on top
         tk.Frame(inner, bg=ACCENT, height=2).pack(fill="x")
 
-        # Hauptbereich
+        # Main area
         main = tk.Frame(inner, bg=BG)
         main.pack(fill="both", expand=True, padx=24, pady=(20, 20))
 
-        # Mindestbreite erzwingen
+        # Enforce minimum width
         spacer = tk.Frame(main, bg=BG, height=0, width=WIDTH - 50)
         spacer.pack(fill="x")
         spacer.pack_propagate(False)
 
-        # ── Header ──
+        # Header
         hdr = tk.Frame(main, bg=BG)
         hdr.pack(fill="x", pady=(0, 4))
 
@@ -955,7 +955,7 @@ class RecordingOverlay:
         close_btn.bind("<Enter>", lambda e: close_btn.configure(fg=ACCENT))
         close_btn.bind("<Leave>", lambda e: close_btn.configure(fg=TEXT3))
 
-        # ── Status-Zeile ──
+        # Status row
         status_f = tk.Frame(main, bg=BG)
         status_f.pack(fill="x", pady=(2, 16))
 
@@ -977,10 +977,10 @@ class RecordingOverlay:
         tk.Label(status_f, text="CTRL+ALT+D", font=("Consolas", 9),
                  fg=TEXT3, bg=BG).pack(side="right")
 
-        # ── Trennlinie ──
+        # Divider
         tk.Frame(main, bg=DIVIDER, height=1).pack(fill="x", pady=(0, 16))
 
-        # ── Statistik-Karten ──
+        # Stats cards
         count, total_sec = get_today_stats()
         minutes = total_sec / 60
 
@@ -997,7 +997,7 @@ class RecordingOverlay:
             card_inner = tk.Frame(wrapper, bg=CARD)
             card_inner.pack(fill="both", expand=True, padx=1, pady=1)
 
-            # Farbiger Akzent-Balken links
+            # Colored accent bar on the left
             accent_bar = tk.Frame(card_inner, bg=accent_color, width=3)
             accent_bar.pack(side="left", fill="y")
             accent_bar.pack_propagate(False)
@@ -1013,10 +1013,10 @@ class RecordingOverlay:
         make_stat_card(cards_row, count, "Dictations", GREEN, {"padx": (0, 5)})
         make_stat_card(cards_row, f"{minutes:.1f}", "Min Saved", AMBER, {"padx": (5, 0)})
 
-        # ── Trennlinie ──
+        # Divider
         tk.Frame(main, bg=DIVIDER, height=1).pack(fill="x", pady=(0, 16))
 
-        # ── Verlauf ──
+        # History
         logs = get_recent_logs(8)
 
         history_hdr = tk.Frame(main, bg=BG)
@@ -1032,13 +1032,13 @@ class RecordingOverlay:
             from datetime import datetime
             today_str = datetime.now().strftime("%Y-%m-%d")
 
-            COPIED_BG = "#1a2a1a"  # Kurzer gruener Flash nach Kopieren
+            COPIED_BG = "#1a2a1a"  # Short green flash after copy
 
             for entry in reversed(logs):
                 row = tk.Frame(main, bg=BG, cursor="hand2")
                 row.pack(fill="x", pady=1)
 
-                # Datums-Prefix fuer aeltere Eintraege
+                # Date prefix for older entries
                 if entry["date"] == today_str:
                     time_display = entry["time"][:5]
                     time_width = 5
@@ -1056,7 +1056,7 @@ class RecordingOverlay:
                 else:
                     tk.Frame(row, bg=BG, width=52).pack(side="left")
 
-                # Text-Vorschau (gekuerzt)
+                # Text preview (trimmed)
                 preview = entry["text"]
                 max_chars = 30 if entry["date"] != today_str else 36
                 if len(preview) > max_chars:
@@ -1064,13 +1064,13 @@ class RecordingOverlay:
                 tk.Label(row, text=preview, font=("Segoe UI", 9),
                          fg=TEXT2, bg=BG, anchor="w").pack(side="left", fill="x")
 
-                # Klick kopiert den vollen Text in die Zwischenablage
+                # Click copies full text to clipboard
                 full_text = entry["text"]
                 all_widgets = [row] + list(row.winfo_children())
 
                 def copy_text(e, txt=full_text, ws=all_widgets):
                     pyperclip.copy(txt)
-                    # Gruener Flash als Bestaetigung
+                    # Green flash as confirmation
                     for w in ws:
                         w.configure(bg=COPIED_BG)
                     row_ref = ws[0]
@@ -1087,10 +1087,10 @@ class RecordingOverlay:
             tk.Label(main, text="No dictations yet",
                      font=("Segoe UI", 9), fg=TEXT3, bg=BG).pack(anchor="w", pady=(0, 4))
 
-        # ── Trennlinie ──
+        # Divider
         tk.Frame(main, bg=DIVIDER, height=1).pack(fill="x", pady=(14, 16))
 
-        # ── Aktions-Buttons ──
+        # Action buttons
         btns = tk.Frame(main, bg=BG)
         btns.pack(fill="x")
 
@@ -1112,7 +1112,7 @@ class RecordingOverlay:
         make_action_btn(btns, "\u21bb Restart", self._dash_restart)
         make_action_btn(btns, "\u23fb Quit", self._dash_quit)
 
-        # ── Positionierung & Animation ──
+        # Positioning and animation
         win.update_idletasks()
         win_w = max(WIDTH, win.winfo_reqwidth())
         win_h = win.winfo_reqheight()
@@ -1130,11 +1130,11 @@ class RecordingOverlay:
         self._dashboard_win = win
         self._dashboard_visible = True
 
-        # Slide-up + Fade-in
+        # Slide-up and fade-in
         self._dash_animate(x, win_w, win_h, y_end, y_start, 0)
 
     def _dash_animate(self, x, w, h, y_end, y_start, step):
-        """Ease-out Slide-up + Fade-in Animation."""
+        """Ease-out slide-up and fade-in animation."""
         if not self._dashboard_win:
             return
         total = 8
@@ -1157,7 +1157,7 @@ class RecordingOverlay:
             self.root.after(18, self._dash_animate, x, w, h, y_end, y_start, step + 1)
 
     def _dash_toggle_calm(self):
-        """Calm Mode umschalten und Dashboard neu aufbauen."""
+        """Toggle Calm Mode and rebuild dashboard."""
         global calm_mode
         calm_mode = not calm_mode
         save_config()
@@ -1165,20 +1165,20 @@ class RecordingOverlay:
         self.root.after(50, self._create_dashboard)
 
     def _dash_restart(self):
-        """Neustart aus Dashboard."""
+        """Restart from dashboard."""
         self._destroy_dashboard()
         if tray_icon:
             on_restart(tray_icon, None)
 
     def _dash_quit(self):
-        """Beenden aus Dashboard."""
+        """Quit from dashboard."""
         self._destroy_dashboard()
         if tray_icon:
             on_quit(tray_icon, None)
 
 
 def load_model():
-    """Whisper-Modell beim Start laden."""
+    """Load Whisper model at startup."""
     global model
     import traceback
     try:
@@ -1191,11 +1191,11 @@ def load_model():
             compute_type="int8_float16",
         )
         load_time = time.time() - t0
-        append_to_history(f"[STARTUP] Modell geladen in {load_time:.1f}s")
+        append_to_history(f"[STARTUP] Model loaded in {load_time:.1f}s")
         update_tray("Bereit (CTRL+ALT+D)", create_icon_idle())
         play_ready_sound()
     except Exception:
-        # Fehler in Logdatei schreiben (pythonw hat keine Konsole)
+        # Write error to log file (pythonw has no console)
         log_path = os.path.join(os.path.dirname(__file__), "whisper-error.log")
         with open(log_path, "w", encoding="utf-8") as f:
             f.write(traceback.format_exc())
@@ -1203,26 +1203,26 @@ def load_model():
 
 
 def audio_callback(indata, frames, time_info, status):
-    """Wird aufgerufen waehrend der Aufnahme."""
+    """Called during recording."""
     global audio_overflow_count, audio_level
     if status:
-        # Input overflow = Audio-Daten gingen verloren (Buffer zu klein)
+        # Input overflow = audio data was lost (buffer too small)
         audio_overflow_count += 1
     if recording:
         audio_chunks.append(indata.copy())
-        # RMS-Pegel fuer Orb-Animation berechnen (0.0-1.0)
+        # Compute RMS level for orb animation (0.0-1.0)
         audio_level = min(1.0, np.sqrt(np.mean(indata**2)) * 5.0)
 
 
 def start_recording():
-    """Aufnahme starten."""
+    """Start recording."""
     global recording, audio_chunks, audio_overflow_count, stream, target_window
     if recording:
         return
 
     target_window = user32.GetForegroundWindow()
 
-    # Sound VOR der Aufnahme (damit der Beep nicht mitaufgenommen wird)
+    # Play sound BEFORE recording (so beep is not recorded)
     play_start_sound()
 
     audio_chunks = []
@@ -1242,7 +1242,7 @@ def start_recording():
 
 
 def stop_recording_and_transcribe():
-    """Aufnahme stoppen, transkribieren, Text einfuegen."""
+    """Stop recording, transcribe, and insert text."""
     global recording, stream, audio_level
     if not recording:
         return
@@ -1255,7 +1255,7 @@ def stop_recording_and_transcribe():
         stream.close()
         stream = None
 
-    # Sound NACH dem Stoppen (Aufnahme ist bereits beendet)
+    # Play sound AFTER stopping (recording already ended)
     play_stop_sound()
 
     update_tray("Transkribiere...", create_icon_loading())
@@ -1268,7 +1268,7 @@ def stop_recording_and_transcribe():
     audio = np.concatenate(audio_chunks, axis=0).flatten()
     duration = len(audio) / SAMPLE_RATE
 
-    # Overflow-Warnung ins Log schreiben
+    # Write overflow warning to log
     if audio_overflow_count > 0:
         try:
             from datetime import datetime
@@ -1295,7 +1295,7 @@ def stop_recording_and_transcribe():
             initial_prompt=INITIAL_PROMPT,
         )
 
-        # Generator komplett konsumieren (verhindert Datenverlust bei Iteration-Fehlern)
+        # Fully consume generator (prevents data loss on iteration errors)
         segments_list = list(segments)
         t_transcribe = time.time() - t_start
 
@@ -1305,7 +1305,7 @@ def stop_recording_and_transcribe():
         text = apply_word_corrections(text)
         text = remove_trailing_period(text)
 
-        # Performance-Log
+        # Performance log
         ratio = duration / t_transcribe if t_transcribe > 0 else 0
         append_to_history(f"[PERF] {duration:.1f}s Audio → {t_transcribe:.1f}s Transkription ({ratio:.1f}x Echtzeit)")
 
@@ -1339,8 +1339,8 @@ def stop_recording_and_transcribe():
 
 
 def hotkey_loop():
-    """Keyboard-Loop in eigenem Thread."""
-    # Warte bis Modell geladen
+    """Keyboard loop in dedicated thread."""
+    # Wait until model is loaded
     while model is None:
         time.sleep(0.1)
 
@@ -1355,15 +1355,15 @@ def hotkey_loop():
 
 
 def on_restart(icon, item):
-    """Neustart ueber Tray-Menue: neue Instanz starten, dann aktuelle beenden.
+    """Restart via tray menu: launch new instance, then exit current one.
 
-    Verwendet pythonw (nicht cmd.exe) fuer den verzögerten Start,
-    damit kein Terminal-Fenster sichtbar wird.
+    Uses pythonw (not cmd.exe) for delayed start,
+    so no terminal window is visible.
     """
     script_dir = os.path.dirname(os.path.abspath(__file__))
     script_path = os.path.join(script_dir, "whisper-dictate.py")
     pythonw = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
-    # pythonw -c fuer den Sleep: komplett unsichtbar, kein cmd.exe noetig
+    # pythonw -c for delay: fully hidden, no cmd.exe needed
     restart_code = (
         "import time,subprocess;"
         f"time.sleep(2);"
@@ -1382,19 +1382,19 @@ def on_restart(icon, item):
 
 
 def on_toggle_calm(icon, item):
-    """Calm Mode umschalten (statisches Mic-Icon statt Electric Border)."""
+    """Toggle Calm Mode (static mic icon instead of Electric Border)."""
     global calm_mode
     calm_mode = not calm_mode
     save_config()
 
 
 def on_activate(icon, item):
-    """Dashboard oeffnen/schliessen bei Links-Klick auf Tray-Icon."""
+    """Open/close dashboard on left click of tray icon."""
     _dashboard_toggle.set()
 
 
 def on_quit(icon, item):
-    """Beenden ueber Tray-Menue."""
+    """Quit via tray menu."""
     icon.stop()
     os._exit(0)
 
@@ -1402,13 +1402,13 @@ def on_quit(icon, item):
 def main():
     global tray_icon
 
-    # Autostart sicherstellen (Registry Run-Key setzen, alte .lnk aufraeumen)
+    # Ensure autostart (set Registry Run key, clean old .lnk)
     ensure_autostart()
 
-    # Config laden (calm_mode etc.)
+    # Load config (calm_mode etc.)
     load_config()
 
-    # Tray-Icon erstellen (Menu nur fuer default action, natives Menue deaktiviert)
+    # Create tray icon (menu only for default action, native menu disabled)
     menu = pystray.Menu(
         pystray.MenuItem("Dashboard", on_activate, default=True, visible=False),
     )
@@ -1419,27 +1419,27 @@ def main():
         menu,
     )
 
-    # Rechts-Klick soll Dashboard oeffnen statt natives Menue (wie Links-Klick)
+    # Right click should open dashboard instead of native menu (same as left click)
     _original_on_notify = tray_icon._on_notify
     def _patched_on_notify(wparam, lparam):
-        if lparam == 0x0205:  # WM_RBUTTONUP: Dashboard statt Popup-Menu
+        if lparam == 0x0205:  # WM_RBUTTONUP: dashboard instead of popup menu
             tray_icon()
         else:
             _original_on_notify(wparam, lparam)
     tray_icon._on_notify = _patched_on_notify
 
-    # Recording-Overlay (floating "REC" Anzeige)
+    # Recording overlay (floating "REC" indicator)
     overlay = RecordingOverlay()
     overlay.start()
 
-    # Hotkey-Loop und Modell-Laden in Hintergrund-Threads
+    # Run hotkey loop and model loading in background threads
     hotkey_thread = threading.Thread(target=hotkey_loop, daemon=True)
     hotkey_thread.start()
 
     model_thread = threading.Thread(target=load_model, daemon=True)
     model_thread.start()
 
-    # Tray-Icon blockiert den Hauptthread (muss so sein)
+    # Tray icon blocks main thread (required)
     tray_icon.run()
 
 

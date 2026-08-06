@@ -1,122 +1,122 @@
 @echo off
 chcp 65001 >nul 2>&1
-title Whisper Diktiertool - Setup
+title Whisper Dictation Tool - Setup
 echo.
 echo ============================================
-echo   Whisper Diktiertool - Setup
+echo   Whisper Dictation Tool - Setup
 echo ============================================
 echo.
 
-:: Pruefen ob als Admin gestartet (keyboard-Bibliothek braucht es evtl.)
-echo [1/5] Pruefe Voraussetzungen...
+:: Check whether started as admin (keyboard library may need it)
+echo [1/5] Checking prerequisites...
 echo.
 
-:: Python pruefen
+:: Check Python
 python --version >nul 2>&1
 if errorlevel 1 (
-    echo [FEHLER] Python ist nicht installiert oder nicht im PATH.
+    echo [ERROR] Python is not installed or not in PATH.
     echo          Download: https://www.python.org/downloads/
-    echo          WICHTIG: Bei der Installation "Add to PATH" aktivieren!
+    echo          IMPORTANT: Enable "Add to PATH" during installation!
     echo.
     pause
     exit /b 1
 )
-for /f "tokens=2" %%v in ('python --version 2^>^&1') do echo   Python %%v gefunden
+for /f "tokens=2" %%v in ('python --version 2^>^&1') do echo   Found Python %%v
 
-:: pip pruefen
+:: Check pip
 pip --version >nul 2>&1
 if errorlevel 1 (
-    echo [FEHLER] pip ist nicht verfuegbar.
+    echo [ERROR] pip is not available.
     echo.
     pause
     exit /b 1
 )
-echo   pip gefunden
+echo   Found pip
 
-:: NVIDIA GPU pruefen
+:: Check NVIDIA GPU
 nvidia-smi >nul 2>&1
 if errorlevel 1 (
     echo.
-    echo [WARNUNG] nvidia-smi nicht gefunden.
-    echo           Das Tool benoetigt eine NVIDIA GPU mit CUDA-Unterstuetzung.
-    echo           Ohne GPU wird das Modell nicht laden koennen.
+    echo [WARNING] nvidia-smi not found.
+    echo           This tool requires an NVIDIA GPU with CUDA support.
+    echo           Without a GPU, the model will not be able to load.
     echo.
-    choice /m "Trotzdem fortfahren?"
+    choice /m "Continue anyway?"
     if errorlevel 2 exit /b 1
 ) else (
-    echo   NVIDIA GPU gefunden
+    echo   Found NVIDIA GPU
 )
 
 echo.
-echo [2/5] Installiere Python-Pakete...
+echo [2/5] Installing Python packages...
 echo.
 pip install faster-whisper sounddevice keyboard pyperclip pystray Pillow
 if errorlevel 1 (
     echo.
-    echo [FEHLER] Paketinstallation fehlgeschlagen.
-    echo          Versuche: pip install --upgrade pip
+    echo [ERROR] Package installation failed.
+    echo          Try: pip install --upgrade pip
     echo.
     pause
     exit /b 1
 )
 
 echo.
-echo [3/5] Erstelle Autostart (Registry Run-Key)...
+echo [3/5] Creating autostart (Registry Run key)...
 echo.
 
-:: pythonw.exe Pfad dynamisch ermitteln
+:: Resolve pythonw.exe path dynamically
 for /f "delims=" %%p in ('python -c "import sys,os;print(os.path.join(os.path.dirname(sys.executable),'pythonw.exe'))"') do set "PYTHONW=%%p"
 set "SCRIPT_DIR=%~dp0"
-:: Trailing backslash entfernen
+:: Remove trailing backslash
 if "%SCRIPT_DIR:~-1%"=="\" set "SCRIPT_DIR=%SCRIPT_DIR:~0,-1%"
 
-:: Registry Run-Key setzen (HKCU, kein Admin noetig)
+:: Set Registry Run key (HKCU, no admin required)
 reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v WhisperDiktiertool /t REG_SZ /d "\"%PYTHONW%\" \"%SCRIPT_DIR%\whisper-dictate.py\"" /f >nul 2>&1
 
 if not errorlevel 1 (
-    echo   Autostart-Eintrag erstellt (Registry Run-Key)
+    echo   Autostart entry created (Registry Run key)
 ) else (
-    echo   [WARNUNG] Registry-Eintrag konnte nicht erstellt werden.
-    echo             Manuell: whisper-dictate.bat in shell:startup kopieren.
+    echo   [WARNING] Could not create Registry entry.
+    echo             Manual fallback: copy whisper-dictate.bat to shell:startup.
 )
 
-:: Alte .lnk aus Startup-Ordner aufraeumen (falls vorhanden)
+:: Clean up old .lnk in Startup folder (if present)
 set "OLD_LNK=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\Whisper Diktiertool.lnk"
 if exist "%OLD_LNK%" (
     del "%OLD_LNK%" >nul 2>&1
-    echo   Alte Startup-Verknuepfung entfernt
+    echo   Removed old Startup shortcut
 )
-:: StartupApproved-Geistereintrag entfernen
+:: Remove StartupApproved ghost entry
 reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\StartupFolder" /v "Whisper Diktiertool.lnk" /f >nul 2>&1
 
 echo.
-echo [4/5] Lade Whisper-Modell herunter (large-v3-turbo, ca. 3 GB)...
-echo        Das kann beim ersten Mal einige Minuten dauern.
+echo [4/5] Downloading Whisper model (large-v3-turbo, ~3 GB)...
+echo        This can take a few minutes on first run.
 echo.
 
-python -c "from faster_whisper import WhisperModel; print('Lade Modell...'); m = WhisperModel('large-v3-turbo', device='cuda', compute_type='int8_float16'); print('Modell erfolgreich geladen!')"
+python -c "from faster_whisper import WhisperModel; print('Loading model...'); m = WhisperModel('large-v3-turbo', device='cuda', compute_type='int8_float16'); print('Model loaded successfully!')"
 if errorlevel 1 (
     echo.
-    echo [WARNUNG] Modell konnte nicht auf GPU geladen werden.
-    echo           Pruefe NVIDIA-Treiber und CUDA-Installation.
-    echo           Das Modell wird beim ersten Start erneut versucht.
+    echo [WARNING] Could not load model on GPU.
+    echo           Check NVIDIA driver and CUDA installation.
+    echo           The model will be retried on first start.
 )
 
 echo.
-echo [5/5] Starte Whisper Diktiertool...
+echo [5/5] Starting Whisper Dictation Tool...
 echo.
 start "" pythonw "%~dp0whisper-dictate.py"
 
 echo ============================================
-echo   Setup abgeschlossen!
+echo   Setup complete!
 echo ============================================
 echo.
-echo   Hotkey:    CTRL+ALT+D (Aufnahme starten/stoppen)
-echo   Tray-Icon: Grau = laedt, Gruen = bereit, Rot = Aufnahme
-echo   Tray-Icon:  Linksklick = Dashboard, Rechtsklick = Dashboard
-echo   Autostart: Aktiv (startet bei Windows-Login)
+echo   Hotkey:    CTRL+ALT+D (start/stop recording)
+echo   Tray icon: Gray = loading, Green = ready, Red = recording
+echo   Tray icon: Left click = dashboard, right click = dashboard
+echo   Autostart: Enabled (starts at Windows login)
 echo.
-echo   Das Diktiertool laeuft jetzt im System Tray.
-echo   Warte bis das Icon gruen wird, dann CTRL+ALT+D druecken.
+echo   The dictation tool is now running in the system tray.
+echo   Wait until the icon turns green, then press CTRL+ALT+D.
 echo.
 pause

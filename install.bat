@@ -124,7 +124,11 @@ if "%ENABLE_AUTOSTART%"=="1" (
     reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\StartupFolder" /v "Whisper Diktiertool.lnk" /f >nul 2>&1
 ) else (
     echo [5/7] Skipping autostart setup (user chose No).
-    echo       To start the dictation manually after login, run manual-launch.bat
+    reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v WhisperDiktiertool /f >nul 2>&1
+    if not errorlevel 1 (
+        echo       Removed existing autostart entry from previous setup.
+    )
+    echo       To start the dictation manually after login, run whisper-dictate.bat
 )
 
 echo.
@@ -156,7 +160,7 @@ if "%ENABLE_AUTOSTART%"=="1" (
     echo   Autostart: Enabled (starts at Windows login)
 ) else (
     echo   Autostart: Disabled
-    echo   Start manually after login: manual-launch.bat
+    echo   Start manually after login: whisper-dictate.bat
     echo   You can enable autostart later by re-running install.bat
 )
 echo   Python env: Project-local .venv

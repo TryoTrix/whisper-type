@@ -336,33 +336,12 @@ def save_config():
 
 
 def ensure_autostart():
-    """Create/update Registry Run key and clean up old .lnk artifacts."""
-    import winreg
-    try:
-        # Resolve paths dynamically
-        pythonw = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
-        script = os.path.abspath(__file__)
-        expected_value = f'"{pythonw}" "{script}"'
+    """Compatibility shim: only clean legacy startup shortcut artifacts.
 
-        # Check Registry Run key and set if needed
-        reg_key = r"Software\Microsoft\Windows\CurrentVersion\Run"
-        reg_name = "WhisperDiktiertool"
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, reg_key, 0,
-                            winreg.KEY_READ | winreg.KEY_WRITE) as key:
-            try:
-                current_value, _ = winreg.QueryValueEx(key, reg_name)
-                if current_value == expected_value:
-                    # Already correct, only verify cleanup
-                    _cleanup_old_autostart()
-                    return
-            except FileNotFoundError:
-                pass  # Entry does not exist yet
-            winreg.SetValueEx(key, reg_name, 0, winreg.REG_SZ, expected_value)
-
-        # Clean up old .lnk and StartupApproved entry
-        _cleanup_old_autostart()
-    except Exception:
-        pass
+    Autostart enable/disable is controlled by install.bat and uninstall.bat.
+    The runtime app must not re-create Registry Run keys on its own.
+    """
+    _cleanup_old_autostart()
 
 
 def _cleanup_old_autostart():
@@ -1402,7 +1381,8 @@ def on_quit(icon, item):
 def main():
     global tray_icon
 
-    # Ensure autostart (set Registry Run key, clean old .lnk)
+    # Do not force-enable autostart at runtime.
+    # Keep only cleanup of legacy Startup shortcut artifacts.
     ensure_autostart()
 
     # Load config (calm_mode etc.)

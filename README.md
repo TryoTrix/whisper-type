@@ -51,6 +51,29 @@ The installer will:
 5. Download the Whisper model (~3 GB, one-time)
 6. Start the dictation tool
 
+## Uninstall
+
+Run:
+
+```
+uninstall.bat
+```
+
+The uninstaller will:
+1. Remove the autostart Registry Run key (if it exists)
+2. Clean Startup leftovers (`Whisper Diktiertool.lnk` and StartupApproved ghost entry)
+3. Ask whether to keep local logs/config/history
+   If kept, files are left as-is
+   If not kept, logs are emptied and `whisper-config.json` is removed
+4. Ask whether to keep downloaded Whisper model cache
+   If not kept, Whisper model folders in common Hugging Face cache paths are removed
+5. Remove project-local `.venv` and Python `__pycache__` folders
+6. Optionally remove desktop `Whisper Restart.lnk`
+
+Notes:
+- If the app is still running, close it from the tray or Task Manager before uninstalling for complete cleanup.
+- Model cache cleanup is targeted to common Whisper model folders, not all Hugging Face assets.
+
 ## Usage
 
 | Action | Shortcut |

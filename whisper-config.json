@@ -7,7 +7,8 @@
         "dictation": "ctrl+alt+d"
     },
     "audio": {
-        "sample_rate": 16000
+        "sample_rate": 16000,
+        "beep_volume": 0.1
     },
     "model": {
         "size": "large-v3-turbo",

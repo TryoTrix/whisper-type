@@ -11,6 +11,8 @@ Start:
 
 import sys
 import os
+import io
+import wave
 import ctypes
 from ctypes import wintypes
 
@@ -178,12 +180,46 @@ def hotkey_display_text():
 
 def play_start_sound():
     """Short high beep = recording started."""
-    winsound.Beep(800, 100)
+    play_tone(800, 100)
 
 
 def play_stop_sound():
     """Short low beep = recording stopped."""
-    winsound.Beep(500, 100)
+    play_tone(500, 100)
+
+
+def play_tone(frequency, duration_ms):
+    """Play a short configurable-volume tone."""
+    try:
+        sr = 44100
+        duration = duration_ms / 1000
+        t = np.linspace(0, duration, int(sr * duration), False)
+        tone = np.sin(2 * np.pi * frequency * t)
+        fade_len = min(int(sr * 0.005), len(tone) // 2)
+        if fade_len > 0:
+            tone[:fade_len] *= np.linspace(0, 1, fade_len)
+            tone[-fade_len:] *= np.linspace(1, 0, fade_len)
+        play_waveform(tone, sr, base_volume=0.5)
+    except Exception:
+        pass  # Sound is nice-to-have, never crash on issues
+
+
+def play_waveform(samples, sample_rate=44100, base_volume=1.0):
+    """Play mono samples through Windows with config-controlled amplitude."""
+    volume = float(CONFIG["audio"]["beep_volume"])
+    if volume <= 0:
+        return
+    volume = min(volume, 1.0) * base_volume
+    pcm = np.clip(samples * volume, -1.0, 1.0)
+    pcm = (pcm * 32767).astype(np.int16)
+
+    with io.BytesIO() as buffer:
+        with wave.open(buffer, "wb") as wav:
+            wav.setnchannels(1)
+            wav.setsampwidth(2)
+            wav.setframerate(sample_rate)
+            wav.writeframes(pcm.tobytes())
+        winsound.PlaySound(buffer.getvalue(), winsound.SND_MEMORY)
 
 
 def play_ready_sound():
@@ -196,8 +232,8 @@ def play_ready_sound():
         note1 = np.sin(2 * np.pi * 784 * t1) * np.exp(-t1 * 12)  # G5, short
         note2 = np.sin(2 * np.pi * 1047 * t2) * np.exp(-t2 * 6)  # C6, lingering tail
         gap = np.zeros(int(sr * 0.04))  # 40ms pause
-        chime = np.concatenate([note1, gap, note2]) * 0.15  # Quiet
-        sd.play(chime.astype(np.float32), sr)
+        chime = np.concatenate([note1, gap, note2])
+        play_waveform(chime, sr, base_volume=0.3)
     except Exception:
         pass  # Sound is nice-to-have, never crash on issues
 
@@ -276,12 +312,16 @@ def _migrate_config(config):
     """Accept the old flat config and move known keys to their sections."""
     migrated = dict(config)
     ui = dict(migrated.get("ui", {}))
+    audio = dict(migrated.get("audio", {}))
     if "calm_mode" in migrated:
         ui["calm_mode"] = migrated.pop("calm_mode")
     if "rec_overlay" in migrated:
         ui["rec_overlay"] = migrated.pop("rec_overlay")
+    audio.setdefault("beep_volume", 0.2)
     if ui:
         migrated["ui"] = ui
+    if audio:
+        migrated["audio"] = audio
     return migrated
 
 
@@ -304,6 +344,7 @@ def _validate_config(config):
         ("ui", "rec_overlay"),
         ("hotkeys", "dictation"),
         ("audio", "sample_rate"),
+        ("audio", "beep_volume"),
         ("model", "size"),
         ("model", "device"),
         ("model", "compute_type"),
@@ -322,6 +363,10 @@ def _validate_config(config):
     ]
     for section, key in required_values:
         _require_config_value(config, section, key)
+
+    beep_volume = float(config["audio"]["beep_volume"])
+    if not 0 <= beep_volume <= 1:
+        raise RuntimeError("Config value audio.beep_volume must be between 0.0 and 1.0")
 
 
 def load_config():

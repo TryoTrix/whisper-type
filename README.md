@@ -117,6 +117,7 @@ All user-editable settings live in `whisper-config.json`. The file is structured
 |---------|-------------|---------|
 | `hotkeys.dictation` | Start/stop recording hotkey | `ctrl+alt+d` |
 | `audio.sample_rate` | Microphone sample rate for Whisper | `16000` |
+| `audio.beep_volume` | Audio feedback volume, from silent `0.0` to max `1.0` | `0.2` |
 | `model.size` | Whisper model | `large-v3-turbo` |
 | `model.device` | Faster Whisper device | `cuda` |
 | `model.compute_type` | Faster Whisper compute type | `int8_float16` |
@@ -175,7 +176,7 @@ The Whisper engine itself (faster-whisper) runs cross-platform, but the integrat
 - Clipboard paste (`pyperclip` + `keyboard.send("ctrl+v")` -> `xdotool`/`pbpaste`)
 - System tray icon (`pystray` works cross-platform, minor adjustments needed)
 - Recording overlay (tkinter with Win32 click-through -> platform-specific window flags)
-- Audio feedback (`winsound.Beep` -> e.g. `simpleaudio`)
+- Audio feedback (`winsound.PlaySound` generated WAV -> platform-specific sound API)
 - GPU: Linux has CUDA support, macOS would need CoreML or CPU fallback
 
 ## System Requirements

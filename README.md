@@ -96,6 +96,10 @@ When the Tkinter UI is available, left-click or right-click the tray icon to ope
 
 With Razer Synapse (or similar software) you can map `CTRL+ALT+D` to a mouse button, e.g. Hypershift + scroll wheel click. Dictate without touching the keyboard.
 
+### Tip: Autotranslate with large-v3
+
+With the full Whisper `large-v3` model, setting `transcription.dictation_language` to a language different from the language you speak can make Whisper translate instead of transcribe. For example, if you speak German while `dictation_language` is set to `fr` or `en`, the output will be French or English. Mentioning the target language or a translation instruction in `transcription.initial_prompt` can reinforce this behavior. This is a side effect of how `model.transcribe()` uses the configured language, not a separate translation mode, so the result depends on the audio and prompt and is not guaranteed. This is not effective with `large-v3-turbo`.
+
 ## Spoken Punctuation
 
 Say the word, the tool inserts the character. This can be enabled or disabled with `post_processing.apply_spoken_punctuation`; the default mapping uses German words and can be customized in `post_processing.spoken_punctuation` inside `whisper-config.json`.

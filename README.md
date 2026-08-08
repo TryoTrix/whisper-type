@@ -16,7 +16,7 @@ Local voice-to-text dictation for Windows. Press a hotkey, speak, text appears. 
 - **Dashboard:** Click the tray icon to see today's stats, recent transcription history with click-to-copy, and quick actions (REC Overlay, restart, quit)
 - **Electric Border recording overlay:** Animated microphone icon with dual-ring plasma effect (2D pixel displacement, breathing pulse, core flash), pre-rendered at 30fps. Red pulsing bar across all monitors
 - **REC Overlay toggle:** Show or hide the recording overlay from the dashboard. Setting persists across restarts
-- **Spoken punctuation:** Say "colon", "question mark" etc. and get the actual character (configurable)
+- **Spoken punctuation:** Say "colon", "question mark" etc. and get the actual character (configurable in `whisper-config.json`)
 - **Hallucination filter:** Known Whisper phantom outputs are detected and discarded
 - **System tray:** Runs quietly in the background with a color-coded status icon (gray/green/red)
 - **Audio feedback:** Beep tones on start/stop so you know when recording begins and ends
@@ -97,7 +97,7 @@ With Razer Synapse (or similar software) you can map `CTRL+ALT+D` to a mouse but
 
 ## Spoken Punctuation
 
-Say the word, the tool inserts the character. The default mapping uses German words but can be customized in the `SPOKEN_PUNCTUATION` dictionary at the top of `whisper-dictate.py`.
+Say the word, the tool inserts the character. This can be enabled or disabled with `post_processing.apply_spoken_punctuation`; the default mapping uses German words and can be customized in `post_processing.spoken_punctuation` inside `whisper-config.json`.
 
 | Spoken word | Result |
 |-------------|--------|
@@ -111,18 +111,29 @@ Say the word, the tool inserts the character. The default mapping uses German wo
 
 ## Configuration
 
-All settings are defined as variables at the top of `whisper-dictate.py`:
+All user-editable settings live in `whisper-config.json`. The file is structured into sections and is rewritten with indentation when the dashboard persists settings such as `ui.calm_mode` or `ui.rec_overlay`.
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `MODEL_SIZE` | Whisper model | `large-v3` |
-| `INITIAL_PROMPT` | Domain-specific terms for better recognition | Comma-separated list |
-| `SPOKEN_PUNCTUATION` | Word-to-character mapping (regex) | See table above |
-| `NO_SPEECH_THRESHOLD` | Silence detection threshold | `None` (disabled, VAD handles this) |
-| `SHORT_TEXT_MAX_WORDS` | Remove trailing period for <= N words | `3` |
-| `DEBUG_TRANSCRIPTION` | Write segment details to history log | `True` |
+| Setting | Description | Default |
+|---------|-------------|---------|
+| `hotkeys.dictation` | Start/stop recording hotkey | `ctrl+alt+d` |
+| `audio.sample_rate` | Microphone sample rate for Whisper | `16000` |
+| `model.size` | Whisper model | `large-v3-turbo` |
+| `model.device` | Faster Whisper device | `cuda` |
+| `model.compute_type` | Faster Whisper compute type | `int8_float16` |
+| `transcription.dictation_language` | Language code passed to `model.transcribe()` | `de` |
+| `transcription.beam_size` | Whisper beam search size | `3` |
+| `transcription.vad_filter` | Enable faster-whisper VAD | `true` |
+| `transcription.condition_on_previous_text` | Reuse previous text as context | `false` |
+| `transcription.initial_prompt` | Domain-specific terms for better recognition | Comma-separated list |
+| `transcription.no_speech_threshold` | Silence detection threshold | `null` (disabled, VAD handles this) |
+| `transcription.short_text_max_words` | Remove trailing period for <= N words | `3` |
+| `transcription.debug_transcription` | Write segment details to history log | `true` |
+| `post_processing.apply_spoken_punctuation` | Enable spoken punctuation replacement | `true` |
+| `post_processing.spoken_punctuation` | Spoken word-to-character regex mapping | See table above |
+| `post_processing.word_corrections` | Common Whisper mistake corrections | Regex mapping |
+| `post_processing.hallucination_phrases` | Known silence hallucinations to discard | Phrase list |
 
-To switch the language, change the `language="de"` parameter in the `model.transcribe()` call to your language code (e.g. `"en"` for English).
+To switch the language, change `transcription.dictation_language` to your language code, for example `"en"` for English.
 
 ## Speed & Accuracy
 

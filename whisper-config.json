@@ -1,0 +1,69 @@
+{
+    "ui": {
+        "calm_mode": false,
+        "rec_overlay": true
+    },
+    "hotkeys": {
+        "dictation": "ctrl+alt+d"
+    },
+    "audio": {
+        "sample_rate": 16000
+    },
+    "model": {
+        "size": "large-v3-turbo",
+        "device": "cuda",
+        "compute_type": "int8_float16"
+    },
+    "transcription": {
+        "dictation_language": "de",
+        "beam_size": 3,
+        "vad_filter": true,
+        "condition_on_previous_text": false,
+        "initial_prompt": "CLAUDE.md, Whisper, faster-whisper, Python, CUDA, RTX 4060, committe, pushe, Punkt, YOLO, TryoTrix, CMD, committen, pushen, Commit, Push",
+        "no_speech_threshold": null,
+        "debug_transcription": true,
+        "short_text_max_words": 3
+    },
+    "post_processing": {
+        "apply_spoken_punctuation": true,
+        "spoken_punctuation": {
+            "[,\\s]*[-–]?\\s*Doppelpunkt[,\\s]*": ": ",
+            "[,\\s]*[-–]?\\s*Semikolon[,\\s]*": "; ",
+            "[,\\s]*[-–]?\\s*Ausrufezeichen": "!",
+            "[,\\s]*[-–]?\\s*Fragezeichen": "?",
+            "[,\\s]*[-–]?\\s*Gedankenstrich[,\\s]*": " - ",
+            "[,\\s]*[-–]?\\s*(?:Schrägstrich|Slash)[,\\s]*": "/",
+            "[,\\s]*[-–]?\\s*Anführungszeichen[,\\s]*": "\"",
+            "[,\\s]*[-–]?\\s*Punkt": "."
+        },
+        "word_corrections": {
+            "\\bTrial[\\s-]?Tricks?\\b": "TryoTrix",
+            "\\bTry[\\s-]?o[\\s-]?Tricks?\\b": "TryoTrix",
+            "\\bTryo[\\s-]?Tricks?\\b": "TryoTrix",
+            "\\bTry[\\s-]?your[\\s-]?Tricks?\\b": "TryoTrix",
+            "\\bTriotricks?\\b": "TryoTrix",
+            "\\bTryotricks?\\b": "TryoTrix"
+        },
+        "hallucination_phrases": [
+            "untertitelung von zdf",
+            "untertitel von zdf",
+            "untertitelung des zdf",
+            "untertitel des zdf",
+            "untertitel der amara.org-community",
+            "copyright wdr",
+            "copyright swr",
+            "vielen dank fürs zuschauen",
+            "vielen dank für's zuschauen",
+            "danke fürs zuschauen",
+            "thanks for watching",
+            "thank you for watching",
+            "bis zum nächsten mal",
+            "ich danke euch fürs zuschauen",
+            "tschüss",
+            "vielen dank.",
+            "vielen dank",
+            "untertitelung des zdf, 2020",
+            "untertitelung des zdf 2020"
+        ]
+    }
+}

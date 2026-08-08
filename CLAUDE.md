@@ -30,12 +30,12 @@
 | `CTRL+ALT+W` | Restart Whisper (kill + start) via desktop shortcut |
 
 ### How It Works
-- **Hotkey:** `CTRL+ALT+D` starts/stops recording
-- **Model:** `faster-whisper` large-v3-turbo, language: German (good quality, fast)
+- **Hotkey:** `CTRL+ALT+D` starts/stops recording (configured via `hotkeys.dictation` in `whisper-config.json`)
+- **Model:** `faster-whisper` large-v3-turbo, language: German by default (configured via `model.*` and `transcription.dictation_language` in `whisper-config.json`)
 - **GPU:** CUDA int8_float16 on RTX 4060 (~3 GB VRAM)
-- **Transcription:** `beam_size=3`, `vad_filter=True`, `condition_on_previous_text=False`, audio is passed directly to Whisper as a NumPy array (no WAV roundtrip)
-- **INITIAL_PROMPT:** Domain terms Whisper should recognize correctly (e.g. CLAUDE.md). Configurable via `INITIAL_PROMPT`, no performance impact
-- **SPOKEN_PUNCTUATION:** Spoken punctuation is automatically replaced (e.g. "Doppelpunkt" -> `:`, "Fragezeichen" -> `?`, "Anfuehrungszeichen" -> `"`). Configurable in `SPOKEN_PUNCTUATION`
+- **Transcription:** `beam_size=3`, `vad_filter=True`, `condition_on_previous_text=False` by default, audio is passed directly to Whisper as a NumPy array (no WAV roundtrip). All transcription options live under `transcription` in `whisper-config.json`
+- **Initial prompt:** Domain terms Whisper should recognize correctly (e.g. CLAUDE.md). Configurable via `transcription.initial_prompt`, no performance impact
+- **Spoken punctuation:** Spoken punctuation is automatically replaced (e.g. "Doppelpunkt" -> `:`, "Fragezeichen" -> `?`, "Anfuehrungszeichen" -> `"`) when `post_processing.apply_spoken_punctuation` is enabled. Mappings are configurable in `post_processing.spoken_punctuation`
 - **Output:** Transcribed text is inserted into the active window via clipboard
 - **Tray icon colors:** Gray = model loading, Green = ready, Red = recording
 - **Tray tooltip stats:** Shows today's dictations and audio duration in the tooltip (e.g. "Today: 5x, 2.1 min"). Updates after each dictation by reading `whisper-history.log`
@@ -43,17 +43,18 @@
 - **REC overlay:** Red pulsing bar (8px) at top of all monitors during recording (tkinter, click-through). Microphone icon (100x100, 8x supersampling, r_outer=400 for gapless circle) with Electric Border Effect: 90 pre-rendered frames (3s loop, 30fps) using true 2D pixel displacement (simulating SVG feDisplacementMap). Dual-ring system: inner ring (White-hot Core + Sharp + 4 glow layers, border_r=mic_r+1) and outer orbit ring (separate noise field, slower pan). Fill disc (200,42,42, Blur 8) behind all rings fills the full area between mic icon and Electric Border. Noise textures (5 octaves, 520x520) pan circularly for organic turbulence. All blur layers are composited into 2 images BEFORE frame loop (only 2 displacement ops per frame instead of 6; no blur ops in loop). Visual effects: Breathing Pulse (glow intensity via sine), Core Flash (3 short brightness flashes per loop), dark-red compositing (semi-transparent edge pixels -> dark red instead of black). Pre-rendering runs parallel to model load (~5-8s). Fallback: static mic icon with fill disc until frames are ready. ~7 MB RAM for frame list
 - **History log:** Every successful transcription is stored with timestamp in `whisper-history.log` (`[2026-02-17 14:32:05] Text...`)
 
-### Configuration (Top of Script)
+### Configuration (`whisper-config.json`)
 
-| Variable | Description |
-|----------|-------------|
-| `MODEL_SIZE` | Whisper model (currently `large-v3`) |
-| `INITIAL_PROMPT` | Domain terms for better recognition (comma-separated) |
-| `SPOKEN_PUNCTUATION` | Spoken punctuation -> actual symbols (regex dict) |
-| `NO_SPEECH_THRESHOLD` | Disabled (`None`). Whisper's `no_speech_prob` is unreliable for German (marks clear speech as 0.97). `vad_filter=True` handles silence detection |
-| `DEBUG_TRANSCRIPTION` | Write segment details to history log (True/False) |
-| `SHORT_TEXT_MAX_WORDS` | Remove trailing period for <= N words (3) |
-| `HALLUCINATION_PHRASES` | Known Whisper hallucinations to filter |
+| Section | Description |
+|---------|-------------|
+| `ui` | Dashboard/toggle state such as `calm_mode` and `rec_overlay` |
+| `hotkeys` | Dictation shortcut |
+| `audio` | Recording sample rate |
+| `model` | Faster Whisper model size, device, and compute type |
+| `transcription` | Language, beam size, VAD, initial prompt, debug logging, short-text punctuation behavior |
+| `post_processing` | Spoken punctuation toggle/regexes, word corrections, and hallucination phrase filters |
+
+When the app writes `calm_mode` or `rec_overlay`, it preserves the full config structure and writes readable indented JSON.
 
 ### Tray Icon Interaction
 - **Left click:** Opens dashboard popup (dark-themed, slide-up animation). Shows status (Ready/Recording/Loading), today's stats (dictations + minutes), last 8 dictations, and action buttons (Calm Mode, Restart, Quit). Closes automatically when recording starts. Toggle behavior: second click closes dashboard

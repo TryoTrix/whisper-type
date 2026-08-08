@@ -2,9 +2,6 @@
 whisper-error.log
 whisper-history.log
 
-# Runtime config (auto-created)
-whisper-config.json
-
 # Python
 __pycache__/
 *.pyc

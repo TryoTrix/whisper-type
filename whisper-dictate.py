@@ -49,63 +49,10 @@ from PIL import Image, ImageDraw, ImageFilter
 import winsound
 
 # ============================================================
-# CONFIGURATION - Edit here
+# Runtime configuration is loaded from whisper-config.json.
 # ============================================================
-HOTKEY = "ctrl+alt+d"
-SAMPLE_RATE = 16000      # Whisper expects 16kHz
-MODEL_SIZE = "large-v3-turbo"  # Faster (~3-5s instead of ~12-16s), good quality
-NO_SPEECH_THRESHOLD = None  # Disabled (no_speech_prob is unreliable for German)
-DEBUG_TRANSCRIPTION = True   # Write segment details to history log
-SHORT_TEXT_MAX_WORDS = 3     # For <= N words: remove trailing period
-
-# Domain terms Whisper should recognize correctly (biases decoder, no performance impact)
-INITIAL_PROMPT = "CLAUDE.md, Whisper, faster-whisper, Python, CUDA, RTX 4060, committe, pushe, Punkt, YOLO, TryoTrix, CMD, committen, pushen, Commit, Push"
-
-# Spoken punctuation -> real characters (regex patterns, case-insensitive)
-# Commas/spaces before and after the word are consumed as part of the match
-SPOKEN_PUNCTUATION = {
-    r'[,\s]*[-–]?\s*Doppelpunkt[,\s]*': ': ',
-    r'[,\s]*[-–]?\s*Semikolon[,\s]*': '; ',
-    r'[,\s]*[-–]?\s*Ausrufezeichen': '!',
-    r'[,\s]*[-–]?\s*Fragezeichen': '?',
-    r'[,\s]*[-–]?\s*Gedankenstrich[,\s]*': ' - ',
-    r'[,\s]*[-–]?\s*(?:Schrägstrich|Slash)[,\s]*': '/',
-    r'[,\s]*[-–]?\s*Anführungszeichen[,\s]*': '"',
-    r'[,\s]*[-–]?\s*Punkt': '.',
-}
-
-# Word corrections: common Whisper mistakes -> correct spelling (regex, case-insensitive)
-WORD_CORRECTIONS = {
-    r'\bTrial[\s-]?Tricks?\b': 'TryoTrix',
-    r'\bTry[\s-]?o[\s-]?Tricks?\b': 'TryoTrix',
-    r'\bTryo[\s-]?Tricks?\b': 'TryoTrix',
-    r'\bTry[\s-]?your[\s-]?Tricks?\b': 'TryoTrix',
-    r'\bTriotricks?\b': 'TryoTrix',
-    r'\bTryotricks?\b': 'TryoTrix',
-}
-
-# Known Whisper hallucinations in silence (lowercase for matching)
-HALLUCINATION_PHRASES = {
-    "untertitelung von zdf",
-    "untertitel von zdf",
-    "untertitelung des zdf",
-    "untertitel des zdf",
-    "untertitel der amara.org-community",
-    "copyright wdr",
-    "copyright swr",
-    "vielen dank fürs zuschauen",
-    "vielen dank für's zuschauen",
-    "danke fürs zuschauen",
-    "thanks for watching",
-    "thank you for watching",
-    "bis zum nächsten mal",
-    "ich danke euch fürs zuschauen",
-    "tschüss",
-    "vielen dank.",
-    "vielen dank",
-    "untertitelung des zdf, 2020",
-    "untertitelung des zdf 2020",
-}
+CONFIG_PATH = os.path.join(os.path.dirname(__file__), "whisper-config.json")
+CONFIG = {}
 # ============================================================
 
 # Win32 API for window management
@@ -224,6 +171,11 @@ def update_tray(status_text, icon_img):
         tray_icon.title = f"Whisper Diktiertool - {status_text}{stats}"
 
 
+def hotkey_display_text():
+    """Return the configured hotkey in a human-friendly form."""
+    return str(CONFIG["hotkeys"]["dictation"]).upper()
+
+
 def play_start_sound():
     """Short high beep = recording started."""
     winsound.Beep(800, 100)
@@ -252,6 +204,10 @@ def play_ready_sound():
 
 def filter_hallucinations(segments):
     """Filter Whisper hallucinations (silence phantoms and known phrases)."""
+    transcription_config = CONFIG["transcription"]
+    hallucination_phrases = set(CONFIG["post_processing"]["hallucination_phrases"])
+    debug_transcription = bool(transcription_config["debug_transcription"])
+    no_speech_threshold = transcription_config["no_speech_threshold"]
     filtered = []
     debug_lines = []
     for seg in segments:
@@ -259,30 +215,30 @@ def filter_hallucinations(segments):
         no_speech = getattr(seg, "no_speech_prob", 0.0)
         # no_speech_prob filtering disabled: in German, Whisper often returns 0.97
         # for clearly spoken sentences. vad_filter=True already performs audio VAD.
-        if NO_SPEECH_THRESHOLD is not None and no_speech > NO_SPEECH_THRESHOLD:
-            if DEBUG_TRANSCRIPTION:
+        if no_speech_threshold is not None and no_speech > no_speech_threshold:
+            if debug_transcription:
                 debug_lines.append(f"  SKIP (no_speech={no_speech:.2f}): {text}")
             continue
         if not text:
             continue
         # Check known hallucinations
         text_lower = text.lower().rstrip(".!?,;:")
-        if text_lower in HALLUCINATION_PHRASES:
-            if DEBUG_TRANSCRIPTION:
+        if text_lower in hallucination_phrases:
+            if debug_transcription:
                 debug_lines.append(f"  SKIP (hallucination): {text}")
             continue
-        if DEBUG_TRANSCRIPTION:
+        if debug_transcription:
             debug_lines.append(f"  KEEP (no_speech={no_speech:.2f}): {text}")
         filtered.append(text)
     # Write debug info to log
-    if DEBUG_TRANSCRIPTION and debug_lines:
+    if debug_transcription and debug_lines:
         append_to_history("[DEBUG] Segments:\n" + "\n".join(debug_lines))
     return filtered
 
 
 def apply_spoken_punctuation(text):
     """Replace spoken punctuation with real symbols."""
-    for pattern, replacement in SPOKEN_PUNCTUATION.items():
+    for pattern, replacement in CONFIG["post_processing"]["spoken_punctuation"].items():
         text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
     text = re.sub(r'  +', ' ', text)  # Collapse repeated spaces
     return text.strip()
@@ -290,14 +246,15 @@ def apply_spoken_punctuation(text):
 
 def apply_word_corrections(text):
     """Replace Whisper mistakes with corrected spelling."""
-    for pattern, replacement in WORD_CORRECTIONS.items():
+    for pattern, replacement in CONFIG["post_processing"]["word_corrections"].items():
         text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
     return text
 
 
 def remove_trailing_period(text):
     """Remove trailing period for short texts (1-3 words)."""
-    if len(text.split()) <= SHORT_TEXT_MAX_WORDS and text.endswith('.'):
+    max_words = int(CONFIG["transcription"]["short_text_max_words"])
+    if len(text.split()) <= max_words and text.endswith('.'):
         return text[:-1]
     return text
 
@@ -315,26 +272,81 @@ def append_to_history(text, duration=0):
         pass
 
 
+def _migrate_config(config):
+    """Accept the old flat config and move known keys to their sections."""
+    migrated = dict(config)
+    ui = dict(migrated.get("ui", {}))
+    if "calm_mode" in migrated:
+        ui["calm_mode"] = migrated.pop("calm_mode")
+    if "rec_overlay" in migrated:
+        ui["rec_overlay"] = migrated.pop("rec_overlay")
+    if ui:
+        migrated["ui"] = ui
+    return migrated
+
+
+def _write_config(config):
+    with open(CONFIG_PATH, "w", encoding="utf-8", newline="\n") as f:
+        json.dump(config, f, ensure_ascii=False, indent=4)
+        f.write("\n")
+
+
+def _require_config_value(config, section, key):
+    try:
+        return config[section][key]
+    except (KeyError, TypeError) as exc:
+        raise RuntimeError(f"Missing config value: {section}.{key}") from exc
+
+
+def _validate_config(config):
+    required_values = [
+        ("ui", "calm_mode"),
+        ("ui", "rec_overlay"),
+        ("hotkeys", "dictation"),
+        ("audio", "sample_rate"),
+        ("model", "size"),
+        ("model", "device"),
+        ("model", "compute_type"),
+        ("transcription", "dictation_language"),
+        ("transcription", "beam_size"),
+        ("transcription", "vad_filter"),
+        ("transcription", "condition_on_previous_text"),
+        ("transcription", "initial_prompt"),
+        ("transcription", "no_speech_threshold"),
+        ("transcription", "debug_transcription"),
+        ("transcription", "short_text_max_words"),
+        ("post_processing", "apply_spoken_punctuation"),
+        ("post_processing", "spoken_punctuation"),
+        ("post_processing", "word_corrections"),
+        ("post_processing", "hallucination_phrases"),
+    ]
+    for section, key in required_values:
+        _require_config_value(config, section, key)
+
+
 def load_config():
-    """Load config from whisper-config.json. Falls back to defaults if missing."""
-    global calm_mode, rec_overlay
-    config_path = os.path.join(os.path.dirname(__file__), "whisper-config.json")
-    try:
-        with open(config_path, "r", encoding="utf-8") as f:
-            config = json.load(f)
-        calm_mode = config.get("calm_mode", False)
-        rec_overlay = config.get("rec_overlay", True)
-    except Exception:
-        pass
+    """Load required config from whisper-config.json."""
+    global CONFIG, calm_mode, rec_overlay
+
+    if not os.path.exists(CONFIG_PATH):
+        raise FileNotFoundError(f"Required config file not found: {CONFIG_PATH}")
+
+    with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+        CONFIG = _migrate_config(json.load(f))
+
+    _validate_config(CONFIG)
+
+    ui_config = CONFIG["ui"]
+
+    calm_mode = bool(ui_config["calm_mode"])
+    rec_overlay = bool(ui_config["rec_overlay"])
 
 
-def save_config():
-    """Save current config to whisper-config.json."""
-    config_path = os.path.join(os.path.dirname(__file__), "whisper-config.json")
+def save_ui_config_value(key, value):
+    """Save one ui config value without rewriting sibling ui settings."""
     try:
-        config = {"calm_mode": calm_mode, "rec_overlay": rec_overlay}
-        with open(config_path, "w", encoding="utf-8") as f:
-            json.dump(config, f)
+        CONFIG.setdefault("ui", {})[key] = value
+        _write_config(CONFIG)
     except Exception:
         pass
 
@@ -347,6 +359,19 @@ def log_ui_error(context, exc):
         with open(log_path, "a", encoding="utf-8") as f:
             f.write("\n" + "=" * 72 + "\n")
             f.write(f"[UI ERROR] {context}: {exc}\n")
+            f.write(traceback.format_exc())
+    except Exception:
+        pass
+
+
+def log_config_error(context, exc):
+    """Append fatal configuration errors to whisper-error.log."""
+    import traceback
+    try:
+        log_path = os.path.join(os.path.dirname(__file__), "whisper-error.log")
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write("\n" + "=" * 72 + "\n")
+            f.write(f"[CONFIG ERROR] {context}: {exc}\n")
             f.write(traceback.format_exc())
     except Exception:
         pass
@@ -995,7 +1020,7 @@ class RecordingOverlay:
         tk.Label(status_f, text=status_text, font=("Segoe UI", 10),
                  fg=TEXT2, bg=BG).pack(side="left")
 
-        tk.Label(status_f, text="CTRL+ALT+D", font=("Consolas", 9),
+        tk.Label(status_f, text=hotkey_display_text(), font=("Consolas", 9),
                  fg=TEXT3, bg=BG).pack(side="right")
 
         # Divider
@@ -1181,7 +1206,7 @@ class RecordingOverlay:
         """Toggle the recording overlay and rebuild dashboard."""
         global rec_overlay
         rec_overlay = not rec_overlay
-        save_config()
+        save_ui_config_value("rec_overlay", rec_overlay)
         self._destroy_dashboard()
         self.root.after(50, self._create_dashboard)
 
@@ -1205,15 +1230,16 @@ def load_model():
     try:
         from faster_whisper import WhisperModel
 
+        model_config = CONFIG["model"]
         t0 = time.time()
         model = WhisperModel(
-            MODEL_SIZE,
-            device="cuda",
-            compute_type="int8_float16",
+            str(model_config["size"]),
+            device=str(model_config["device"]),
+            compute_type=str(model_config["compute_type"]),
         )
         load_time = time.time() - t0
         append_to_history(f"[STARTUP] Model loaded in {load_time:.1f}s")
-        update_tray("Ready (CTRL+ALT+D)", create_icon_idle())
+        update_tray(f"Ready ({hotkey_display_text()})", create_icon_idle())
         play_ready_sound()
     except Exception:
         # Write error to log file (pythonw has no console)
@@ -1250,7 +1276,7 @@ def start_recording():
     audio_overflow_count = 0
     recording = True
     stream = sd.InputStream(
-        samplerate=SAMPLE_RATE,
+        samplerate=int(CONFIG["audio"]["sample_rate"]),
         channels=1,
         dtype="float32",
         callback=audio_callback,
@@ -1282,12 +1308,12 @@ def stop_recording_and_transcribe():
     update_tray("Transcribing...", create_icon_loading())
 
     if not audio_chunks:
-        update_tray("Ready (CTRL+ALT+D)", create_icon_idle())
+        update_tray(f"Ready ({hotkey_display_text()})", create_icon_idle())
         return
 
     chunk_count = len(audio_chunks)
     audio = np.concatenate(audio_chunks, axis=0).flatten()
-    duration = len(audio) / SAMPLE_RATE
+    duration = len(audio) / int(CONFIG["audio"]["sample_rate"])
 
     # Write overflow warning to log
     if audio_overflow_count > 0:
@@ -1302,18 +1328,19 @@ def stop_recording_and_transcribe():
             pass
 
     if duration < 0.3:
-        update_tray("Ready (CTRL+ALT+D)", create_icon_idle())
+        update_tray(f"Ready ({hotkey_display_text()})", create_icon_idle())
         return
 
     try:
+        transcription_config = CONFIG["transcription"]
         t_start = time.time()
         segments, info = model.transcribe(
             audio,
-            language="de",
-            beam_size=3,
-            vad_filter=True,
-            condition_on_previous_text=False,
-            initial_prompt=INITIAL_PROMPT,
+            language=transcription_config["dictation_language"],
+            beam_size=int(transcription_config["beam_size"]),
+            vad_filter=bool(transcription_config["vad_filter"]),
+            condition_on_previous_text=bool(transcription_config["condition_on_previous_text"]),
+            initial_prompt=str(transcription_config["initial_prompt"]),
         )
 
         # Fully consume generator (prevents data loss on iteration errors)
@@ -1322,7 +1349,8 @@ def stop_recording_and_transcribe():
 
         parts = filter_hallucinations(segments_list)
         text = " ".join(parts).strip()
-        text = apply_spoken_punctuation(text)
+        if bool(CONFIG["post_processing"]["apply_spoken_punctuation"]):
+            text = apply_spoken_punctuation(text)
         text = apply_word_corrections(text)
         text = remove_trailing_period(text)
 
@@ -1364,7 +1392,7 @@ def stop_recording_and_transcribe():
     except Exception as e:
         append_to_history(f"[ERROR] Transcription failed: {e}")
 
-    update_tray("Ready (CTRL+ALT+D)", create_icon_idle())
+    update_tray(f"Ready ({hotkey_display_text()})", create_icon_idle())
 
 
 def hotkey_loop():
@@ -1374,12 +1402,13 @@ def hotkey_loop():
         time.sleep(0.1)
 
     while True:
-        keyboard.wait(HOTKEY)
+        hotkey = str(CONFIG["hotkeys"]["dictation"])
+        keyboard.wait(hotkey)
         if not recording:
             start_recording()
         else:
             stop_recording_and_transcribe()
-        while keyboard.is_pressed(HOTKEY):
+        while keyboard.is_pressed(hotkey):
             time.sleep(0.01)
 
 
@@ -1414,7 +1443,7 @@ def on_toggle_calm(icon, item):
     """Toggle Calm Mode (static mic icon instead of Electric Border)."""
     global calm_mode
     calm_mode = not calm_mode
-    save_config()
+    save_ui_config_value("calm_mode", calm_mode)
 
 
 def on_activate(icon, item):
@@ -1438,8 +1467,18 @@ def main():
     # Keep only cleanup of legacy Startup shortcut artifacts.
     ensure_autostart()
 
-    # Load config (calm_mode etc.)
-    load_config()
+    # Load required config before starting background threads.
+    try:
+        load_config()
+    except Exception as exc:
+        log_config_error("failed to load whisper-config.json", exc)
+        user32.MessageBoxW(
+            None,
+            f"Could not load required config file:\n{CONFIG_PATH}\n\n{exc}",
+            "Whisper config error",
+            0x10,
+        )
+        sys.exit(1)
 
     ui_available = check_tkinter_available()
     if not ui_available:

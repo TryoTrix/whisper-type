@@ -301,6 +301,7 @@ def remove_trailing_period(text):
 
 def append_to_history(text, duration=0):
     """Save history entries, optionally omitting successfully transcribed text."""
+    global dashboard_history_start_offset
     try:
         from datetime import datetime
         log_path = os.path.join(os.path.dirname(__file__), "whisper-history.log")
@@ -308,6 +309,12 @@ def append_to_history(text, duration=0):
         dur_str = f" ({duration:.1f}s)" if duration > 0 else ""
         if duration > 0 and not bool(CONFIG.get("logging", {}).get("save_history", True)):
             text = "Dictation recorded (content not saved)"
+
+        max_bytes = float(CONFIG["logging"]["max_file_size_mb"]) * 1024 * 1024
+        if os.path.exists(log_path) and os.path.getsize(log_path) >= max_bytes:
+            open(log_path, "w", encoding="utf-8").close()
+            dashboard_history_start_offset = 0
+
         with open(log_path, "a", encoding="utf-8") as f:
             f.write(f"[{timestamp}]{dur_str} {text}\n")
     except Exception:
@@ -329,6 +336,7 @@ def _migrate_config(config):
     ui.setdefault("dashboard_history_entries", 8)
     ui.setdefault("preserve_dashboard_history", True)
     logging_config.setdefault("save_history", True)
+    logging_config.setdefault("max_file_size_mb", 10)
     if ui:
         migrated["ui"] = ui
     if audio:
@@ -376,6 +384,7 @@ def _validate_config(config):
         ("post_processing", "word_corrections"),
         ("post_processing", "hallucination_phrases"),
         ("logging", "save_history"),
+        ("logging", "max_file_size_mb"),
     ]
     for section, key in required_values:
         _require_config_value(config, section, key)
@@ -391,6 +400,10 @@ def _validate_config(config):
     history_entries = int(config["ui"]["dashboard_history_entries"])
     if history_entries < 0:
         raise RuntimeError("Config value ui.dashboard_history_entries must be at least 0")
+
+    max_file_size_mb = float(config["logging"]["max_file_size_mb"])
+    if max_file_size_mb <= 0:
+        raise RuntimeError("Config value logging.max_file_size_mb must be greater than 0")
 
 
 def load_config():

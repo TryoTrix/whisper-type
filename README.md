@@ -126,6 +126,7 @@ All user-editable settings live in `whisper-config.json`. It is standard JSON, s
 | `ui.dashboard_history_entries` | Maximum number of dictations displayed in the dashboard. Set to `0` to hide the history. | `8` |
 | `ui.preserve_dashboard_history` | Show dashboard history from previous app sessions. When `false`, only dictations recorded since the current app launch are shown. | `true` |
 | `logging.save_history` | Save the text of each dictation to `whisper-history.log`. When `false`, timestamps, durations, and diagnostic entries are still saved for statistics, but dictation text is omitted. | `true` |
+| `logging.max_file_size_mb` | Maximum size of `whisper-history.log`. Once reached, the file is cleared before the next entry is saved. | `10` |
 | `hotkeys.dictation` | Start/stop recording hotkey | `ctrl+alt+d` |
 | `audio.sample_rate` | Microphone sample rate for Whisper | `16000` |
 | `audio.beep_volume` | Start, stop, and ready-chime volume, from silent `0.0` to max `1.0` | `0.1` |

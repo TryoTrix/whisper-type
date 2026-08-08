@@ -48,7 +48,7 @@
 | Section | Description |
 |---------|-------------|
 | `ui` | Dashboard/toggle state such as `calm_mode`, `rec_overlay`, `dashboard_history_entries`, and `preserve_dashboard_history` |
-| `logging` | History persistence (`save_history`) and dashboard history visibility |
+| `logging` | History text persistence (`save_history`) and history file size limit (`max_file_size_mb`) |
 | `hotkeys` | Dictation shortcut |
 | `audio` | Recording sample rate, beep volume, and `silence_timeout_seconds` (auto-stop after sustained silence; `0` disables it) |
 | `model` | Faster Whisper model size, device, and compute type |

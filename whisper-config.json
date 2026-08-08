@@ -6,7 +6,8 @@
         "preserve_dashboard_history": true
     },
     "logging": {
-        "save_history": true
+        "save_history": true,
+        "max_file_size_mb": 10
     },
     "hotkeys": {
         "dictation": "ctrl+alt+d"

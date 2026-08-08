@@ -49,7 +49,7 @@
 |---------|-------------|
 | `ui` | Dashboard/toggle state such as `calm_mode` and `rec_overlay` |
 | `hotkeys` | Dictation shortcut |
-| `audio` | Recording sample rate |
+| `audio` | Recording sample rate, beep volume, and `silence_timeout_seconds` (auto-stop after sustained silence; `0` disables it) |
 | `model` | Faster Whisper model size, device, and compute type |
 | `transcription` | Language, beam size, VAD, initial prompt, debug logging, short-text punctuation behavior |
 | `post_processing` | Spoken punctuation toggle/regexes, word corrections, and hallucination phrase filters |

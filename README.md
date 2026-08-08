@@ -20,6 +20,7 @@ Local voice-to-text dictation for Windows. Press a hotkey, speak, text appears. 
 - **Hallucination filter:** Known Whisper phantom outputs are detected and discarded
 - **System tray:** Runs quietly in the background with a color-coded status icon (gray/green/red)
 - **Audio feedback:** Beep tones on start/stop so you know when recording begins and ends
+- **Silence auto-stop:** Automatically stops a forgotten recording after a configurable period of silence
 - **History log:** All transcriptions are saved with timestamps to `whisper-history.log`
 - **Autostart:** Launches automatically on Windows login
 - **Single file:** The entire tool is one Python script, easy to understand and customize
@@ -118,6 +119,7 @@ All user-editable settings live in `whisper-config.json`. The file is structured
 | `hotkeys.dictation` | Start/stop recording hotkey | `ctrl+alt+d` |
 | `audio.sample_rate` | Microphone sample rate for Whisper | `16000` |
 | `audio.beep_volume` | Audio feedback volume, from silent `0.0` to max `1.0` | `0.2` |
+| `audio.silence_timeout_seconds` | Stop recording after this many seconds of continuous silence; `0` disables it | `15` |
 | `model.size` | Whisper model | `large-v3-turbo` |
 | `model.device` | Faster Whisper device | `cuda` |
 | `model.compute_type` | Faster Whisper compute type | `int8_float16` |

@@ -65,6 +65,7 @@ recording = False
 audio_chunks = []
 audio_overflow_count = 0
 audio_level = 0.0  # RMS level 0.0-1.0, updated in audio_callback
+last_audio_activity = 0.0
 model = None
 stream = None
 target_window = None
@@ -318,6 +319,7 @@ def _migrate_config(config):
     if "rec_overlay" in migrated:
         ui["rec_overlay"] = migrated.pop("rec_overlay")
     audio.setdefault("beep_volume", 0.2)
+    audio.setdefault("silence_timeout_seconds", 15)
     if ui:
         migrated["ui"] = ui
     if audio:
@@ -345,6 +347,7 @@ def _validate_config(config):
         ("hotkeys", "dictation"),
         ("audio", "sample_rate"),
         ("audio", "beep_volume"),
+        ("audio", "silence_timeout_seconds"),
         ("model", "size"),
         ("model", "device"),
         ("model", "compute_type"),
@@ -367,6 +370,10 @@ def _validate_config(config):
     beep_volume = float(config["audio"]["beep_volume"])
     if not 0 <= beep_volume <= 1:
         raise RuntimeError("Config value audio.beep_volume must be between 0.0 and 1.0")
+
+    silence_timeout = float(config["audio"]["silence_timeout_seconds"])
+    if silence_timeout < 0:
+        raise RuntimeError("Config value audio.silence_timeout_seconds must be at least 0")
 
 
 def load_config():
@@ -1296,19 +1303,22 @@ def load_model():
 
 def audio_callback(indata, frames, time_info, status):
     """Called during recording."""
-    global audio_overflow_count, audio_level
+    global audio_overflow_count, audio_level, last_audio_activity
     if status:
         # Input overflow = audio data was lost (buffer too small)
         audio_overflow_count += 1
     if recording:
         audio_chunks.append(indata.copy())
         # Compute RMS level for orb animation (0.0-1.0)
-        audio_level = min(1.0, np.sqrt(np.mean(indata**2)) * 5.0)
+        rms = float(np.sqrt(np.mean(indata**2)))
+        audio_level = min(1.0, rms * 5.0)
+        if rms >= 0.01:
+            last_audio_activity = time.monotonic()
 
 
 def start_recording():
     """Start recording."""
-    global recording, audio_chunks, audio_overflow_count, stream, target_window
+    global recording, audio_chunks, audio_overflow_count, last_audio_activity, stream, target_window
     if recording:
         return
 
@@ -1319,6 +1329,7 @@ def start_recording():
 
     audio_chunks = []
     audio_overflow_count = 0
+    last_audio_activity = time.monotonic()
     recording = True
     stream = sd.InputStream(
         samplerate=int(CONFIG["audio"]["sample_rate"]),
@@ -1331,6 +1342,23 @@ def start_recording():
     stream.start()
 
     update_tray("Recording...", create_icon_recording())
+
+    silence_timeout = float(CONFIG["audio"]["silence_timeout_seconds"])
+    if silence_timeout > 0:
+        threading.Thread(
+            target=monitor_silence_timeout,
+            args=(silence_timeout,),
+            daemon=True,
+        ).start()
+
+
+def monitor_silence_timeout(silence_timeout):
+    """Stop the active dictation after sustained silence."""
+    while recording:
+        if time.monotonic() - last_audio_activity >= silence_timeout:
+            stop_recording_and_transcribe()
+            return
+        time.sleep(0.1)
 
 
 def stop_recording_and_transcribe():

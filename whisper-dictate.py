@@ -121,6 +121,7 @@ stream = None
 target_window = None
 tray_icon = None
 calm_mode = False  # True = static mic icon instead of Electric Border
+rec_overlay = True  # True = show red recording overlay while recording
 ui_error_message = None
 _dashboard_toggle = threading.Event()  # Signal from tray (left click) to tkinter thread
 
@@ -316,12 +317,13 @@ def append_to_history(text, duration=0):
 
 def load_config():
     """Load config from whisper-config.json. Falls back to defaults if missing."""
-    global calm_mode
+    global calm_mode, rec_overlay
     config_path = os.path.join(os.path.dirname(__file__), "whisper-config.json")
     try:
         with open(config_path, "r", encoding="utf-8") as f:
             config = json.load(f)
         calm_mode = config.get("calm_mode", False)
+        rec_overlay = config.get("rec_overlay", True)
     except Exception:
         pass
 
@@ -330,7 +332,7 @@ def save_config():
     """Save current config to whisper-config.json."""
     config_path = os.path.join(os.path.dirname(__file__), "whisper-config.json")
     try:
-        config = {"calm_mode": calm_mode}
+        config = {"calm_mode": calm_mode, "rec_overlay": rec_overlay}
         with open(config_path, "w", encoding="utf-8") as f:
             json.dump(config, f)
     except Exception:
@@ -834,14 +836,16 @@ class RecordingOverlay:
 
     def _poll(self):
         """Show/hide overlay based on recording status."""
-        if recording and not self._visible:
+        should_show_overlay = recording and rec_overlay
+
+        if should_show_overlay and not self._visible:
             for win in self._windows:
                 win.deiconify()
             if self._orb_win:
                 self._orb_win.deiconify()
             self._visible = True
             self._animate()
-        elif not recording and self._visible:
+        elif not should_show_overlay and self._visible:
             for win in self._windows:
                 win.withdraw()
             if self._orb_win:
@@ -932,8 +936,8 @@ class RecordingOverlay:
         DIVIDER = "#1c1c38"
         BTN = "#181834"
         BTN_HOVER = "#262650"
-        CALM_ON_BG = "#14301a"
-        CALM_ON_HOVER = "#1e4826"
+        OVERLAY_ON_BG = "#14301a"
+        OVERLAY_ON_HOVER = "#1e4826"
         LOG_ROW_HOVER = "#12122a"
         WIDTH = 370
 
@@ -1120,11 +1124,11 @@ class RecordingOverlay:
             btn.bind("<Leave>", lambda e: btn.configure(bg=bg_c))
             return btn
 
-        if calm_mode:
-            make_action_btn(btns, "\u2713 Calm Mode", self._dash_toggle_calm,
-                            CALM_ON_BG, CALM_ON_HOVER)
+        if rec_overlay:
+            make_action_btn(btns, "\u2713 REC Overlay", self._dash_toggle_rec_overlay,
+                            OVERLAY_ON_BG, OVERLAY_ON_HOVER)
         else:
-            make_action_btn(btns, "Calm Mode", self._dash_toggle_calm)
+            make_action_btn(btns, "REC Overlay", self._dash_toggle_rec_overlay)
 
         make_action_btn(btns, "\u21bb Restart", self._dash_restart)
         make_action_btn(btns, "\u23fb Quit", self._dash_quit)
@@ -1173,10 +1177,10 @@ class RecordingOverlay:
         if step < total:
             self.root.after(18, self._dash_animate, x, w, h, y_end, y_start, step + 1)
 
-    def _dash_toggle_calm(self):
-        """Toggle Calm Mode and rebuild dashboard."""
-        global calm_mode
-        calm_mode = not calm_mode
+    def _dash_toggle_rec_overlay(self):
+        """Toggle the recording overlay and rebuild dashboard."""
+        global rec_overlay
+        rec_overlay = not rec_overlay
         save_config()
         self._destroy_dashboard()
         self.root.after(50, self._create_dashboard)

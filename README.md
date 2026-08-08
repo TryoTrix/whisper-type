@@ -13,9 +13,9 @@ Local voice-to-text dictation for Windows. Press a hotkey, speak, text appears. 
 - **Fast:** 73 seconds of speech transcribed in 7.7 seconds (9.5x real-time on RTX 4060)
 - **Accurate:** CUDA float16 with beam search, handles dialects, background music, and long pauses
 - **Multi-language:** Works with English, German, and all other Whisper-supported languages
-- **Dashboard:** Click the tray icon to see today's stats, recent transcription history with click-to-copy, and quick actions (Calm Mode, restart, quit)
+- **Dashboard:** Click the tray icon to see today's stats, recent transcription history with click-to-copy, and quick actions (REC Overlay, restart, quit)
 - **Electric Border recording overlay:** Animated microphone icon with dual-ring plasma effect (2D pixel displacement, breathing pulse, core flash), pre-rendered at 30fps. Red pulsing bar across all monitors
-- **Calm Mode:** Toggle in the dashboard to replace the animated overlay with a simple static icon. Setting persists across restarts
+- **REC Overlay toggle:** Show or hide the recording overlay from the dashboard. Setting persists across restarts
 - **Spoken punctuation:** Say "colon", "question mark" etc. and get the actual character (configurable)
 - **Hallucination filter:** Known Whisper phantom outputs are detected and discarded
 - **System tray:** Runs quietly in the background with a color-coded status icon (gray/green/red)

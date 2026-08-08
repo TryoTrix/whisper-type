@@ -20,9 +20,10 @@ if ctypes.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
     sys.exit(0)
 
 # Make NVIDIA DLLs visible for CUDA (cublas, cudnn)
-_nvidia_base = os.path.join(
-    os.path.dirname(sys.executable), "Lib", "site-packages", "nvidia"
-)
+# sysconfig gives the correct site-packages for both venv and global Python installs
+import sysconfig as _sysconfig
+_site_packages = _sysconfig.get_path("purelib")
+_nvidia_base = os.path.join(_site_packages, "nvidia")
 _dll_dirs = []
 for _lib in ("cublas", "cudnn"):
     _dll_dir = os.path.join(_nvidia_base, _lib, "bin")

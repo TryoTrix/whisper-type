@@ -85,7 +85,7 @@ if errorlevel 1 (
     echo           Continuing with current pip version.
 )
 
-"%VENV_PY%" -m pip install faster-whisper sounddevice keyboard pyperclip pystray Pillow
+"%VENV_PY%" -m pip install faster-whisper sounddevice keyboard pyperclip pystray Pillow nvidia-cublas-cu12
 if errorlevel 1 (
     echo.
     echo [ERROR] Package installation failed.

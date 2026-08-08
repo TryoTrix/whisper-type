@@ -1326,6 +1326,13 @@ def stop_recording_and_transcribe():
         ratio = duration / t_transcribe if t_transcribe > 0 else 0
         append_to_history(f"[PERF] {duration:.1f}s audio -> {t_transcribe:.1f}s transcription ({ratio:.1f}x real-time)")
 
+        if not text:
+            audio_rms = float(np.sqrt(np.mean(audio ** 2))) if len(audio) > 0 else 0.0
+            audio_peak = float(np.max(np.abs(audio))) if len(audio) > 0 else 0.0
+            append_to_history(
+                f"[DEBUG] Empty transcription (dur={duration:.1f}s, rms={audio_rms:.4f}, "
+                f"peak={audio_peak:.4f}, chunks={chunk_count}, overflow={audio_overflow_count})"
+            )
 
         if text:
             if target_window:

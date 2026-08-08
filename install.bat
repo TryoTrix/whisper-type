@@ -66,6 +66,23 @@ set "VENV_PY=%~dp0.venv\Scripts\python.exe"
 set "VENV_PYTHONW=%~dp0.venv\Scripts\pythonw.exe"
 set "ENABLE_AUTOSTART=0"
 
+"%VENV_PY%" -c "import tkinter" >nul 2>&1
+if errorlevel 1 (
+    echo.
+    echo [ERROR] tkinter is not available in this Python installation.
+    echo         The tray dashboard and recording overlay require tkinter.
+    echo.
+    echo         Fix: run your Python installer, choose Modify,
+    echo              enable "tcl/tk and IDLE", then rerun install.bat.
+    echo.
+    echo         If the problem remains after repairing Python, delete .venv
+    echo         and rerun install.bat so the environment is recreated.
+    echo.
+    pause
+    exit /b 1
+)
+echo   Found tkinter UI support
+
 echo.
 echo [3/7] Autostart preference...
 choice /c YN /n /m "Enable autostart at Windows login? [Y/N]: "

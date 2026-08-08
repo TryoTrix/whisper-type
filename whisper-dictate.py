@@ -121,6 +121,7 @@ stream = None
 target_window = None
 tray_icon = None
 calm_mode = False  # True = static mic icon instead of Electric Border
+ui_error_message = None
 _dashboard_toggle = threading.Event()  # Signal from tray (left click) to tkinter thread
 
 
@@ -334,6 +335,30 @@ def save_config():
             json.dump(config, f)
     except Exception:
         pass
+
+
+def log_ui_error(context, exc):
+    """Append UI/runtime errors to whisper-error.log (pythonw has no console)."""
+    import traceback
+    try:
+        log_path = os.path.join(os.path.dirname(__file__), "whisper-error.log")
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write("\n" + "=" * 72 + "\n")
+            f.write(f"[UI ERROR] {context}: {exc}\n")
+            f.write(traceback.format_exc())
+    except Exception:
+        pass
+
+
+def check_tkinter_available():
+    """Return True if tkinter can be imported by the current Python install."""
+    try:
+        import tkinter  # noqa: F401
+        return True
+    except Exception as exc:
+        log_ui_error("tkinter unavailable", exc)
+        append_to_history(f"[ERROR] UI unavailable: {exc}")
+        return False
 
 
 def ensure_autostart():
@@ -697,8 +722,16 @@ class RecordingOverlay:
 
     def start(self):
         """Start overlay in a dedicated thread."""
-        thread = threading.Thread(target=self._run, daemon=True)
+        thread = threading.Thread(target=self._run_safe, daemon=True)
         thread.start()
+
+    def _run_safe(self):
+        """Run overlay loop and keep failures visible in log files."""
+        try:
+            self._run()
+        except Exception as exc:
+            log_ui_error("RecordingOverlay thread crashed", exc)
+            append_to_history(f"[ERROR] UI overlay crashed: {exc}")
 
     def _run(self):
         import tkinter as tk
@@ -767,7 +800,11 @@ class RecordingOverlay:
         orb_win.attributes("-topmost", True)
         trans = "#{:02x}{:02x}{:02x}".format(*self.TRANS_COLOR)
         orb_win.configure(bg=trans)
-        orb_win.attributes("-transparentcolor", trans)
+        try:
+            orb_win.attributes("-transparentcolor", trans)
+        except tk.TclError:
+            # Fallback on systems where transparentcolor is unavailable or unreliable.
+            orb_win.configure(bg="#200808")
 
         primary = monitors[0] if monitors else (0, 0, 1920, 1080)
         orb_x = primary[0] + 12
@@ -1371,6 +1408,9 @@ def on_toggle_calm(icon, item):
 
 def on_activate(icon, item):
     """Open/close dashboard on left click of tray icon."""
+    if ui_error_message:
+        user32.MessageBoxW(None, ui_error_message, "Whisper UI unavailable", 0x40)
+        return
     _dashboard_toggle.set()
 
 
@@ -1381,7 +1421,7 @@ def on_quit(icon, item):
 
 
 def main():
-    global tray_icon
+    global tray_icon, ui_error_message
 
     # Do not force-enable autostart at runtime.
     # Keep only cleanup of legacy Startup shortcut artifacts.
@@ -1390,29 +1430,56 @@ def main():
     # Load config (calm_mode etc.)
     load_config()
 
-    # Create tray icon (menu only for default action, native menu disabled)
-    menu = pystray.Menu(
-        pystray.MenuItem("Dashboard", on_activate, default=True, visible=False),
-    )
+    ui_available = check_tkinter_available()
+    if not ui_available:
+        ui_error_message = (
+            "The overlay and dashboard cannot be displayed because this Python "
+            "installation does not include tkinter.\n\n"
+            "Repair the Python installation: Modify > enable 'tcl/tk and IDLE', "
+            "then recreate the venv or rerun install.bat."
+        )
+
+    if ui_available:
+        # Create tray icon (menu only for default action, native menu disabled)
+        menu = pystray.Menu(
+            pystray.MenuItem("Dashboard", on_activate, default=True, visible=False),
+        )
+    else:
+        menu = pystray.Menu(
+            pystray.MenuItem("UI unavailable (tkinter missing)", on_activate, default=True),
+            pystray.MenuItem("Restart", on_restart),
+            pystray.MenuItem("Quit", on_quit),
+        )
     tray_icon = pystray.Icon(
         "whisper-dictate",
         create_icon_loading(),
-        "Whisper Diktiertool - Lade Modell...",
+        "Whisper Diktiertool - UI unavailable (tkinter missing)" if not ui_available else "Whisper Diktiertool - Loading model...",
         menu,
     )
 
-    # Right click should open dashboard instead of native menu (same as left click)
-    _original_on_notify = tray_icon._on_notify
-    def _patched_on_notify(wparam, lparam):
-        if lparam == 0x0205:  # WM_RBUTTONUP: dashboard instead of popup menu
-            tray_icon()
-        else:
+    # Some pystray/Tk/Windows combinations do not fire default menu actions reliably.
+    # Handle left and right tray mouse-up directly when backend exposes _on_notify.
+    _original_on_notify = getattr(tray_icon, "_on_notify", None)
+
+    if callable(_original_on_notify):
+        def _patched_on_notify(wparam, lparam):
+            WM_LBUTTONUP = 0x0202
+            WM_RBUTTONUP = 0x0205
+
+            if lparam == WM_LBUTTONUP or (lparam == WM_RBUTTONUP and ui_error_message is None):
+                on_activate(tray_icon, None)
+                return
+
             _original_on_notify(wparam, lparam)
-    tray_icon._on_notify = _patched_on_notify
+
+        tray_icon._on_notify = _patched_on_notify
+    else:
+        append_to_history("[DEBUG] pystray backend without _on_notify hook; default click behavior active")
 
     # Recording overlay (floating "REC" indicator)
-    overlay = RecordingOverlay()
-    overlay.start()
+    if ui_available:
+        overlay = RecordingOverlay()
+        overlay.start()
 
     # Run hotkey loop and model loading in background threads
     hotkey_thread = threading.Thread(target=hotkey_loop, daemon=True)

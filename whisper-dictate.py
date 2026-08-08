@@ -321,30 +321,6 @@ def append_to_history(text, duration=0):
         pass
 
 
-def _migrate_config(config):
-    """Accept the old flat config and move known keys to their sections."""
-    migrated = dict(config)
-    ui = dict(migrated.get("ui", {}))
-    audio = dict(migrated.get("audio", {}))
-    logging_config = dict(migrated.get("logging", {}))
-    if "calm_mode" in migrated:
-        ui["calm_mode"] = migrated.pop("calm_mode")
-    if "rec_overlay" in migrated:
-        ui["rec_overlay"] = migrated.pop("rec_overlay")
-    audio.setdefault("beep_volume", 0.2)
-    audio.setdefault("silence_timeout_seconds", 15)
-    ui.setdefault("dashboard_history_entries", 8)
-    ui.setdefault("preserve_dashboard_history", True)
-    logging_config.setdefault("save_history", True)
-    logging_config.setdefault("max_file_size_mb", 10)
-    if ui:
-        migrated["ui"] = ui
-    if audio:
-        migrated["audio"] = audio
-    migrated["logging"] = logging_config
-    return migrated
-
-
 def _write_config(config):
     with open(CONFIG_PATH, "w", encoding="utf-8", newline="\n") as f:
         json.dump(config, f, ensure_ascii=False, indent=4)
@@ -414,7 +390,7 @@ def load_config():
         raise FileNotFoundError(f"Required config file not found: {CONFIG_PATH}")
 
     with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-        CONFIG = _migrate_config(json.load(f))
+        CONFIG = json.load(f)
 
     _validate_config(CONFIG)
 

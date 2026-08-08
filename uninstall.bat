@@ -14,7 +14,7 @@ set "KEEP_DATA=1"
 set "KEEP_MODELS=1"
 set "REMOVE_SHORTCUT=0"
 
-echo [1/7] Removing autostart registry entries...
+echo [1/6] Removing autostart registry entries...
 reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v WhisperDiktiertool >nul 2>&1
 if errorlevel 1 (
     echo   Autostart registry key not found.
@@ -28,23 +28,7 @@ if errorlevel 1 (
 )
 
 echo.
-echo [2/7] Cleaning startup leftovers...
-set "OLD_LNK=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\Whisper Diktiertool.lnk"
-if exist "%OLD_LNK%" (
-    del "%OLD_LNK%" >nul 2>&1
-    if errorlevel 1 (
-        echo   [WARNING] Could not remove old Startup shortcut.
-    ) else (
-        echo   Removed old Startup shortcut.
-    )
-) else (
-    echo   No old Startup shortcut found.
-)
-reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\StartupFolder" /v "Whisper Diktiertool.lnk" /f >nul 2>&1
-echo   Removed StartupApproved ghost entry (if it existed).
-
-echo.
-echo [3/7] Local data preference...
+echo [2/6] Local data preference...
 choice /c YN /n /m "Keep local logs/config/history files? [Y/N]: "
 if errorlevel 2 (
     set "KEEP_DATA=0"
@@ -53,7 +37,7 @@ if errorlevel 2 (
 )
 
 echo.
-echo [4/7] Model cache preference...
+echo [3/6] Model cache preference...
 choice /c YN /n /m "Keep downloaded Whisper models/cache? [Y/N]: "
 if errorlevel 2 (
     set "KEEP_MODELS=0"
@@ -62,7 +46,7 @@ if errorlevel 2 (
 )
 
 echo.
-echo [5/7] Extra cleanup option...
+echo [4/6] Extra cleanup option...
 choice /c YN /n /m "Remove desktop shortcut 'Whisper Restart.lnk' if found? [Y/N]: "
 if errorlevel 2 (
     set "REMOVE_SHORTCUT=0"
@@ -71,7 +55,7 @@ if errorlevel 2 (
 )
 
 echo.
-echo [6/7] Removing local environment and caches...
+echo [5/6] Removing local environment and caches...
 if exist "%SCRIPT_DIR%\.venv" (
     rmdir /s /q "%SCRIPT_DIR%\.venv" >nul 2>&1
     if errorlevel 1 (
@@ -115,7 +99,7 @@ if "%REMOVE_SHORTCUT%"=="1" (
 )
 
 echo.
-echo [7/7] Uninstall summary
+echo [6/6] Uninstall summary
 echo ============================================
 echo   Registry autostart entry removed (if present)
 echo   Startup leftovers cleaned

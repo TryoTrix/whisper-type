@@ -440,37 +440,6 @@ def check_tkinter_available():
         return False
 
 
-def ensure_autostart():
-    """Compatibility shim: only clean legacy startup shortcut artifacts.
-
-    Autostart enable/disable is controlled by install.bat and uninstall.bat.
-    The runtime app must not re-create Registry Run keys on its own.
-    """
-    _cleanup_old_autostart()
-
-
-def _cleanup_old_autostart():
-    """Remove old startup shortcut and StartupApproved ghost entry."""
-    import winreg
-    # Delete old .lnk
-    try:
-        startup_dir = os.path.join(os.environ["APPDATA"],
-                                   "Microsoft", "Windows", "Start Menu", "Programs", "Startup")
-        lnk_path = os.path.join(startup_dir, "Whisper Diktiertool.lnk")
-        if os.path.exists(lnk_path):
-            os.remove(lnk_path)
-    except Exception:
-        pass
-    # Remove StartupApproved ghost entry (prevents dead entry in Task Manager)
-    try:
-        approved_key = r"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\StartupFolder"
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, approved_key, 0,
-                            winreg.KEY_SET_VALUE) as key:
-            winreg.DeleteValue(key, "Whisper Diktiertool.lnk")
-    except Exception:
-        pass
-
-
 def get_monitors():
     """Enumerate all connected monitors (position and size)."""
     monitors = []
@@ -1535,10 +1504,6 @@ def on_quit(icon, item):
 
 def main():
     global tray_icon, ui_error_message
-
-    # Do not force-enable autostart at runtime.
-    # Keep only cleanup of legacy Startup shortcut artifacts.
-    ensure_autostart()
 
     # Load required config before starting background threads.
     try:

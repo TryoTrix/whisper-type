@@ -86,7 +86,7 @@ HKCU\Software\Microsoft\Windows\CurrentVersion\Run\WhisperDiktiertool
 ```
 - **Value:** `"C:\...\pythonw.exe" "C:\...\whisper-dictate.py"` (dynamic paths)
 - **No PowerShell/COM needed:** uses `winreg` (Python stdlib)
-- **Self-provisioning:** `ensure_autostart()` checks startup if registry entry is correct and sets it if needed (independent of install.bat)
+- **Setup-managed:** `install.bat` creates or removes the Registry Run key according to the user's autostart choice; the runtime app does not change autostart settings.
 - **Cleanup:** old `.lnk` from Startup folder and `StartupApproved` ghost entry are removed automatically
 
 ### Start Manually
@@ -238,11 +238,10 @@ Run `uninstall.bat` from the project folder.
 
 What it does:
 1. Removes the `WhisperDiktiertool` Run key from HKCU (if present)
-2. Removes old Startup `.lnk` and `StartupApproved` ghost entry
-3. Asks whether to keep local data files (logs/config/history)
-4. Asks whether to keep downloaded Whisper model cache
-5. Removes project-local `.venv` and Python `__pycache__` folders
-6. Optionally removes desktop `Whisper Restart.lnk`
+2. Asks whether to keep local data files (logs/config/history)
+3. Asks whether to keep downloaded Whisper model cache
+4. Removes project-local `.venv` and Python `__pycache__` folders
+5. Optionally removes desktop `Whisper Restart.lnk`
 
 ---
 

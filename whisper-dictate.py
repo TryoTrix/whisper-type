@@ -1,5 +1,5 @@
 """
-Whisper Diktiertool - Dictation Tool - Speak & Insert Text
+Whisper-Type - Dictation Tool - Speak & Insert Text
 ============================================
 Press CTRL+ALT+D to start/stop recording.
 Runs as a system tray icon (no taskbar entry).
@@ -171,7 +171,7 @@ def update_tray(status_text, icon_img):
         if count > 0:
             minutes = total_sec / 60
             stats = f" | Today: {count}x, {minutes:.1f} min"
-        tray_icon.title = f"Whisper Diktiertool - {status_text}{stats}"
+        tray_icon.title = f"Whisper-Type - {status_text}{stats}"
 
 
 def hotkey_display_text():
@@ -1043,7 +1043,7 @@ class RecordingOverlay:
         hdr = tk.Frame(main, bg=BG)
         hdr.pack(fill="x", pady=(0, 4))
 
-        tk.Label(hdr, text="Whisper Diktiertool",
+        tk.Label(hdr, text="Whisper-Type",
                  font=("Segoe UI Semibold", 14), fg=TEXT, bg=BG).pack(side="left")
 
         close_btn = tk.Label(hdr, text="\u2715", font=("Segoe UI", 12),
@@ -1576,7 +1576,7 @@ def main():
     tray_icon = pystray.Icon(
         "whisper-dictate",
         create_icon_loading(),
-        "Whisper Diktiertool - UI unavailable (tkinter missing)" if not ui_available else "Whisper Diktiertool - Loading model...",
+        "Whisper-Type - UI unavailable (tkinter missing)" if not ui_available else "Whisper-Type - Loading model...",
         menu,
     )
 

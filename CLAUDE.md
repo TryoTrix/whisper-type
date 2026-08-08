@@ -20,7 +20,7 @@
 
 ---
 
-## Whisper Diktiertool - Dictation Tool (`whisper-dictate.py`)
+## Whisper-Type - Dictation Tool (`whisper-dictate.py`)
 
 ### Shortcuts
 

@@ -1,6 +1,6 @@
 # Whisper Type
 
-Local voice-to-text dictation for Windows. Press a hotkey, speak, text appears. Runs fully offline on your NVIDIA GPU with OpenAI's Whisper large-v3, delivering near-perfect accuracy for English, German, and 90+ other languages.
+Local voice-to-text dictation for Windows. Press a hotkey, speak, text appears. Runs fully offline on your NVIDIA GPU with OpenAI's Whisper large-v3-turbo. The dictation language is configurable and Whisper supports English, German, and many other languages.
 
 **[Download ZIP](https://github.com/TryoTrix/whisper-type/archive/refs/heads/master.zip)** | Requires Windows + NVIDIA GPU + Python 3.12+
 
@@ -11,18 +11,18 @@ Local voice-to-text dictation for Windows. Press a hotkey, speak, text appears. 
 - **Hotkey dictation:** Press `CTRL+ALT+D`, speak, press again, text gets pasted into the active window
 - **Offline & private:** Everything runs locally on your GPU, no audio ever leaves your machine
 - **Fast:** 73 seconds of speech transcribed in 7.7 seconds (9.5x real-time on RTX 4060)
-- **Accurate:** CUDA float16 with beam search, handles dialects, background music, and long pauses
+- **Accurate:** CUDA `int8_float16` with beam search, VAD, and a configurable initial prompt
 - **Multi-language:** Works with English, German, and all other Whisper-supported languages
 - **Dashboard:** Click the tray icon to see today's stats, recent transcription history with click-to-copy, and quick actions (REC Overlay, restart, quit)
 - **Electric Border recording overlay:** Animated microphone icon with dual-ring plasma effect (2D pixel displacement, breathing pulse, core flash), pre-rendered at 30fps. Red pulsing bar across all monitors
 - **REC Overlay toggle:** Show or hide the recording overlay from the dashboard. Setting persists across restarts
-- **Spoken punctuation:** Say "colon", "question mark" etc. and get the actual character (configurable in `whisper-config.json`)
+- **Spoken punctuation:** Say configured words such as "Doppelpunkt" or "Fragezeichen" and get the actual character
 - **Hallucination filter:** Known Whisper phantom outputs are detected and discarded
 - **System tray:** Runs quietly in the background with a color-coded status icon (gray/green/red)
 - **Audio feedback:** Beep tones on start/stop so you know when recording begins and ends
 - **Silence auto-stop:** Automatically stops a forgotten recording after a configurable period of silence
 - **History log:** All transcriptions are saved with timestamps to `whisper-history.log`
-- **Autostart:** Launches automatically on Windows login
+- **Optional autostart:** The installer can launch the app automatically at Windows login
 - **Single file:** The entire tool is one Python script, easy to understand and customize
 
 ## Installation
@@ -48,7 +48,7 @@ The installer will:
 3. Install all Python packages into `.venv`
 4. Ask whether you want autostart at Windows login
    If enabled, create an autostart entry using `.venv\Scripts\pythonw.exe`
-   If disabled, you can launch manually via `manual-launch.bat`
+   If disabled, you can launch manually via `whisper-dictate.bat`
 5. Download the Whisper model (~3 GB, one-time)
 6. Start the dictation tool
 
@@ -80,7 +80,7 @@ Notes:
 | Action | Shortcut |
 |--------|----------|
 | Start/stop recording | `CTRL+ALT+D` |
-| Restart (if hook is lost) | `CTRL+ALT+W` |
+| Restart manually (if the hook is lost) | Run `whisper-restart.bat` |
 
 **Tray icon colors:**
 
@@ -90,7 +90,7 @@ Notes:
 | Green | Ready |
 | Red | Recording |
 
-Left-click the tray icon to open the dashboard with stats, history, and actions. Right-click for the context menu.
+When the Tkinter UI is available, left-click or right-click the tray icon to open or close the dashboard with stats, history, and actions. The dashboard closes automatically when recording starts. If Tkinter is unavailable, the tray menu provides restart and quit actions and the overlay/dashboard are disabled.
 
 ### Tip: Mouse shortcut
 
@@ -109,17 +109,20 @@ Say the word, the tool inserts the character. This can be enabled or disabled wi
 | Gedankenstrich | ` - ` |
 | Schrägstrich / Slash | `/` |
 | Anführungszeichen | `"` |
+| Punkt | `.` |
 
 ## Configuration
 
-All user-editable settings live in `whisper-config.json`. The file is structured into sections and is rewritten with indentation when the dashboard persists settings such as `ui.calm_mode` or `ui.rec_overlay`.
+All user-editable settings live in `whisper-config.json`. It is standard JSON, so it does not support comments. When the dashboard persists a UI setting, it rewrites and reformats the entire file; keep a copy of any manual formatting or external notes.
 
 | Setting | Description | Default |
 |---------|-------------|---------|
+| `ui.calm_mode` | Use the static microphone icon instead of the animated Electric Border while recording. Currently editable in the config file only. | `false` |
+| `ui.rec_overlay` | Show the red recording bar and microphone overlay. It can also be toggled from the dashboard. | `true` |
 | `hotkeys.dictation` | Start/stop recording hotkey | `ctrl+alt+d` |
 | `audio.sample_rate` | Microphone sample rate for Whisper | `16000` |
-| `audio.beep_volume` | Audio feedback volume, from silent `0.0` to max `1.0` | `0.2` |
-| `audio.silence_timeout_seconds` | Stop recording after this many seconds of continuous silence; `0` disables it | `15` |
+| `audio.beep_volume` | Start, stop, and ready-chime volume, from silent `0.0` to max `1.0` | `0.1` |
+| `audio.silence_timeout_seconds` | Stop recording after this many seconds of continuous silence; `0` disables automatic stopping | `20` |
 | `model.size` | Whisper model | `large-v3-turbo` |
 | `model.device` | Faster Whisper device | `cuda` |
 | `model.compute_type` | Faster Whisper compute type | `int8_float16` |
@@ -128,19 +131,19 @@ All user-editable settings live in `whisper-config.json`. The file is structured
 | `transcription.vad_filter` | Enable faster-whisper VAD | `true` |
 | `transcription.condition_on_previous_text` | Reuse previous text as context | `false` |
 | `transcription.initial_prompt` | Domain-specific terms for better recognition | Comma-separated list |
-| `transcription.no_speech_threshold` | Silence detection threshold | `null` (disabled, VAD handles this) |
+| `transcription.no_speech_threshold` | Discard a returned segment when its Whisper `no_speech_prob` is greater than this value; `null` disables this post-transcription filter. This is separate from VAD. | `null` |
 | `transcription.short_text_max_words` | Remove trailing period for <= N words | `3` |
-| `transcription.debug_transcription` | Write segment details to history log | `true` |
+| `transcription.debug_transcription` | Write `KEEP` and `SKIP` decisions for returned segments to `whisper-history.log` | `true` |
 | `post_processing.apply_spoken_punctuation` | Enable spoken punctuation replacement | `true` |
-| `post_processing.spoken_punctuation` | Spoken word-to-character regex mapping | See table above |
-| `post_processing.word_corrections` | Common Whisper mistake corrections | Regex mapping |
-| `post_processing.hallucination_phrases` | Known silence hallucinations to discard | Phrase list |
+| `post_processing.spoken_punctuation` | Ordered regex mapping from spoken terms to characters. The supplied mapping uses German terms and is applied case-insensitively. | See table above |
+| `post_processing.word_corrections` | Ordered, case-insensitive regex replacements applied after spoken punctuation processing. | Regex mapping |
+| `post_processing.hallucination_phrases` | Phrase list to discard when a full returned segment matches after case-folding and removing final punctuation. | Phrase list |
 
-To switch the language, change `transcription.dictation_language` to your language code, for example `"en"` for English.
+To switch the language, change `transcription.dictation_language` to your language code, for example `"en"` for English. Adapt `transcription.initial_prompt`, `post_processing.spoken_punctuation`, and `post_processing.hallucination_phrases` when they contain language-specific terms.
 
 ## Speed & Accuracy
 
-Uses Whisper `large-v3` with `float16` precision and `beam_size=5` for the best balance of quality and speed. Near-perfect accuracy for both English and German, including dialects and background music.
+The supplied configuration uses Whisper `large-v3-turbo` with CUDA `int8_float16` precision and `beam_size=3`, chosen for fast local dictation with good accuracy. For more precise transcriptions, or for better support for certain languages, you can select the full Whisper `large-v3` model in `model.size` and use a suitable compute type such as `float16`. `large-v3` is substantially heavier than `large-v3-turbo`: it requires more VRAM and a capable NVIDIA GPU, takes longer to load, and increases transcription time. Increase `transcription.beam_size` only after considering the additional latency and GPU memory use.
 
 Benchmarks on RTX 4060:
 
@@ -151,7 +154,7 @@ Benchmarks on RTX 4060:
 | Long dictation (6 sentences) | ~55s | ~5s | 11x |
 | Very long dictation (20 segments) | 73s | 7.7s | 9.5x |
 
-If you prefer faster transcriptions over maximum accuracy, switch to `large-v3-turbo` with `beam_size=3` (~3-5x faster).
+Results depend on the microphone, language, background noise, selected model, and configuration.
 
 ## How It Works
 

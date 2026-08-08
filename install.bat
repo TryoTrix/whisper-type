@@ -1,9 +1,9 @@
 @echo off
 chcp 65001 >nul 2>&1
-title Whisper Diktiertool - Setup
+title Whisper-Type - Setup
 echo.
 echo ============================================
-echo   Whisper Diktiertool - Setup
+echo   Whisper-Type - Setup
 echo ============================================
 echo.
 
@@ -162,7 +162,7 @@ if errorlevel 1 (
 )
 
 echo.
-echo [7/7] Starting Whisper Diktiertool...
+echo [7/7] Starting Whisper-Type...
 echo.
 start "" "%VENV_PYTHONW%" "%~dp0whisper-dictate.py"
 

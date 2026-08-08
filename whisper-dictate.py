@@ -186,7 +186,7 @@ def get_recent_logs(max_entries=20):
         with open(log_path, "r", encoding="utf-8") as f:
             lines = f.readlines()
         for line in lines[-500:]:
-            if any(tag in line for tag in ("[DEBUG]", "[PERF]", "[STARTUP]", "[FEHLER]", "OVERFLOW")):
+            if any(tag in line for tag in ("[DEBUG]", "[PERF]", "[STARTUP]", "[ERROR]", "OVERFLOW")):
                 continue
             # New format with duration: [2026-02-23 14:32:05] (12.3s) Text...
             m = re.match(r'\[(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2})\] \((\d+\.?\d*)s\) (.+)', line)
@@ -218,7 +218,7 @@ def update_tray(status_text, icon_img):
         stats = ""
         if count > 0:
             minutes = total_sec / 60
-            stats = f" | Heute: {count}x, {minutes:.1f} Min"
+            stats = f" | Today: {count}x, {minutes:.1f} min"
         tray_icon.title = f"Whisper Diktiertool - {status_text}{stats}"
 
 
@@ -239,7 +239,7 @@ def play_ready_sound():
         # Two ascending notes: G5 -> C6 (soft "ding-ding")
         t1 = np.linspace(0, 0.12, int(sr * 0.12), False)
         t2 = np.linspace(0, 0.25, int(sr * 0.25), False)
-        note1 = np.sin(2 * np.pi * 784 * t1) * np.exp(-t1 * 12)  # G5, kurz
+        note1 = np.sin(2 * np.pi * 784 * t1) * np.exp(-t1 * 12)  # G5, short
         note2 = np.sin(2 * np.pi * 1047 * t2) * np.exp(-t2 * 6)  # C6, lingering tail
         gap = np.zeros(int(sr * 0.04))  # 40ms pause
         chime = np.concatenate([note1, gap, note2]) * 0.15  # Quiet
@@ -274,7 +274,7 @@ def filter_hallucinations(segments):
         filtered.append(text)
     # Write debug info to log
     if DEBUG_TRANSCRIPTION and debug_lines:
-        append_to_history("[DEBUG] Segmente:\n" + "\n".join(debug_lines))
+        append_to_history("[DEBUG] Segments:\n" + "\n".join(debug_lines))
     return filtered
 
 
@@ -1172,14 +1172,14 @@ def load_model():
         )
         load_time = time.time() - t0
         append_to_history(f"[STARTUP] Model loaded in {load_time:.1f}s")
-        update_tray("Bereit (CTRL+ALT+D)", create_icon_idle())
+        update_tray("Ready (CTRL+ALT+D)", create_icon_idle())
         play_ready_sound()
     except Exception:
         # Write error to log file (pythonw has no console)
         log_path = os.path.join(os.path.dirname(__file__), "whisper-error.log")
         with open(log_path, "w", encoding="utf-8") as f:
             f.write(traceback.format_exc())
-        update_tray("FEHLER - siehe whisper-error.log", create_icon_loading())
+        update_tray("ERROR - see whisper-error.log", create_icon_loading())
 
 
 def audio_callback(indata, frames, time_info, status):
@@ -1218,7 +1218,7 @@ def start_recording():
     )
     stream.start()
 
-    update_tray("Aufnahme...", create_icon_recording())
+    update_tray("Recording...", create_icon_recording())
 
 
 def stop_recording_and_transcribe():
@@ -1238,10 +1238,10 @@ def stop_recording_and_transcribe():
     # Play sound AFTER stopping (recording already ended)
     play_stop_sound()
 
-    update_tray("Transkribiere...", create_icon_loading())
+    update_tray("Transcribing...", create_icon_loading())
 
     if not audio_chunks:
-        update_tray("Bereit (CTRL+ALT+D)", create_icon_idle())
+        update_tray("Ready (CTRL+ALT+D)", create_icon_idle())
         return
 
     chunk_count = len(audio_chunks)
@@ -1255,13 +1255,13 @@ def stop_recording_and_transcribe():
             log_path = os.path.join(os.path.dirname(__file__), "whisper-history.log")
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             with open(log_path, "a", encoding="utf-8") as f:
-                f.write(f"[{timestamp}] ⚠ OVERFLOW: {audio_overflow_count}x Input-Overflow, "
-                        f"{chunk_count} Chunks, {duration:.1f}s Audio\n")
+                f.write(f"[{timestamp}] OVERFLOW: {audio_overflow_count}x input overflow, "
+                        f"{chunk_count} chunks, {duration:.1f}s audio\n")
         except Exception:
             pass
 
     if duration < 0.3:
-        update_tray("Bereit (CTRL+ALT+D)", create_icon_idle())
+        update_tray("Ready (CTRL+ALT+D)", create_icon_idle())
         return
 
     try:
@@ -1287,7 +1287,8 @@ def stop_recording_and_transcribe():
 
         # Performance log
         ratio = duration / t_transcribe if t_transcribe > 0 else 0
-        append_to_history(f"[PERF] {duration:.1f}s Audio → {t_transcribe:.1f}s Transkription ({ratio:.1f}x Echtzeit)")
+        append_to_history(f"[PERF] {duration:.1f}s audio -> {t_transcribe:.1f}s transcription ({ratio:.1f}x real-time)")
+
 
         if text:
             if target_window:
@@ -1313,9 +1314,9 @@ def stop_recording_and_transcribe():
             append_to_history(text, duration)
 
     except Exception as e:
-        append_to_history(f"[FEHLER] Transkription fehlgeschlagen: {e}")
+        append_to_history(f"[ERROR] Transcription failed: {e}")
 
-    update_tray("Bereit (CTRL+ALT+D)", create_icon_idle())
+    update_tray("Ready (CTRL+ALT+D)", create_icon_idle())
 
 
 def hotkey_loop():

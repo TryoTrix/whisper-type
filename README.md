@@ -123,6 +123,9 @@ All user-editable settings live in `whisper-config.json`. It is standard JSON, s
 |---------|-------------|---------|
 | `ui.calm_mode` | Use the static microphone icon instead of the animated Electric Border while recording. Currently editable in the config file only. | `false` |
 | `ui.rec_overlay` | Show the red recording bar and microphone overlay. It can also be toggled from the dashboard. | `true` |
+| `ui.dashboard_history_entries` | Maximum number of dictations displayed in the dashboard. Set to `0` to hide the history. | `8` |
+| `ui.preserve_dashboard_history` | Show dashboard history from previous app sessions. When `false`, only dictations recorded since the current app launch are shown. | `true` |
+| `logging.save_history` | Save the text of each dictation to `whisper-history.log`. When `false`, timestamps, durations, and diagnostic entries are still saved for statistics, but dictation text is omitted. | `true` |
 | `hotkeys.dictation` | Start/stop recording hotkey | `ctrl+alt+d` |
 | `audio.sample_rate` | Microphone sample rate for Whisper | `16000` |
 | `audio.beep_volume` | Start, stop, and ready-chime volume, from silent `0.0` to max `1.0` | `0.1` |

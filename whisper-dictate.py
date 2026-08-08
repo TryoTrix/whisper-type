@@ -74,6 +74,7 @@ calm_mode = False  # True = static mic icon instead of Electric Border
 rec_overlay = True  # True = show red recording overlay while recording
 ui_error_message = None
 _dashboard_toggle = threading.Event()  # Signal from tray (left click) to tkinter thread
+dashboard_history_start_offset = 0
 
 
 def create_icon_idle():
@@ -135,8 +136,10 @@ def get_recent_logs(max_entries=20):
         return []
     entries = []
     try:
-        with open(log_path, "r", encoding="utf-8") as f:
-            lines = f.readlines()
+        with open(log_path, "rb") as f:
+            if not bool(CONFIG["ui"]["preserve_dashboard_history"]):
+                f.seek(dashboard_history_start_offset)
+            lines = f.read().decode("utf-8").splitlines()
         for line in lines[-500:]:
             if any(tag in line for tag in ("[DEBUG]", "[PERF]", "[STARTUP]", "[ERROR]", "OVERFLOW")):
                 continue
@@ -297,12 +300,14 @@ def remove_trailing_period(text):
 
 
 def append_to_history(text, duration=0):
-    """Save transcription with timestamp and duration in whisper-history.log."""
+    """Save history entries, optionally omitting successfully transcribed text."""
     try:
         from datetime import datetime
         log_path = os.path.join(os.path.dirname(__file__), "whisper-history.log")
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         dur_str = f" ({duration:.1f}s)" if duration > 0 else ""
+        if duration > 0 and not bool(CONFIG.get("logging", {}).get("save_history", True)):
+            text = "Dictation recorded (content not saved)"
         with open(log_path, "a", encoding="utf-8") as f:
             f.write(f"[{timestamp}]{dur_str} {text}\n")
     except Exception:
@@ -314,16 +319,21 @@ def _migrate_config(config):
     migrated = dict(config)
     ui = dict(migrated.get("ui", {}))
     audio = dict(migrated.get("audio", {}))
+    logging_config = dict(migrated.get("logging", {}))
     if "calm_mode" in migrated:
         ui["calm_mode"] = migrated.pop("calm_mode")
     if "rec_overlay" in migrated:
         ui["rec_overlay"] = migrated.pop("rec_overlay")
     audio.setdefault("beep_volume", 0.2)
     audio.setdefault("silence_timeout_seconds", 15)
+    ui.setdefault("dashboard_history_entries", 8)
+    ui.setdefault("preserve_dashboard_history", True)
+    logging_config.setdefault("save_history", True)
     if ui:
         migrated["ui"] = ui
     if audio:
         migrated["audio"] = audio
+    migrated["logging"] = logging_config
     return migrated
 
 
@@ -344,6 +354,8 @@ def _validate_config(config):
     required_values = [
         ("ui", "calm_mode"),
         ("ui", "rec_overlay"),
+        ("ui", "dashboard_history_entries"),
+        ("ui", "preserve_dashboard_history"),
         ("hotkeys", "dictation"),
         ("audio", "sample_rate"),
         ("audio", "beep_volume"),
@@ -363,6 +375,7 @@ def _validate_config(config):
         ("post_processing", "spoken_punctuation"),
         ("post_processing", "word_corrections"),
         ("post_processing", "hallucination_phrases"),
+        ("logging", "save_history"),
     ]
     for section, key in required_values:
         _require_config_value(config, section, key)
@@ -374,6 +387,10 @@ def _validate_config(config):
     silence_timeout = float(config["audio"]["silence_timeout_seconds"])
     if silence_timeout < 0:
         raise RuntimeError("Config value audio.silence_timeout_seconds must be at least 0")
+
+    history_entries = int(config["ui"]["dashboard_history_entries"])
+    if history_entries < 0:
+        raise RuntimeError("Config value ui.dashboard_history_entries must be at least 0")
 
 
 def load_config():
@@ -392,6 +409,18 @@ def load_config():
 
     calm_mode = bool(ui_config["calm_mode"])
     rec_overlay = bool(ui_config["rec_overlay"])
+
+
+def capture_dashboard_history_start():
+    """Remember the log position at startup when old dashboard entries are hidden."""
+    global dashboard_history_start_offset
+    if bool(CONFIG["ui"]["preserve_dashboard_history"]):
+        return
+    try:
+        log_path = os.path.join(os.path.dirname(__file__), "whisper-history.log")
+        dashboard_history_start_offset = os.path.getsize(log_path)
+    except OSError:
+        dashboard_history_start_offset = 0
 
 
 def save_ui_config_value(key, value):
@@ -1084,7 +1113,8 @@ class RecordingOverlay:
         tk.Frame(main, bg=DIVIDER, height=1).pack(fill="x", pady=(0, 16))
 
         # History
-        logs = get_recent_logs(8)
+        history_entries = int(CONFIG["ui"]["dashboard_history_entries"])
+        logs = get_recent_logs(history_entries) if history_entries > 0 else []
 
         history_hdr = tk.Frame(main, bg=BG)
         history_hdr.pack(fill="x", pady=(0, 10))
@@ -1092,7 +1122,7 @@ class RecordingOverlay:
         tk.Label(history_hdr, text="HISTORY", font=("Segoe UI Semibold", 9),
                  fg=TEXT3, bg=BG).pack(side="left")
 
-        tk.Label(history_hdr, text="click to copy", font=("Segoe UI", 8),
+        tk.Label(history_hdr, text="Click on a line to copy it to the clipboard", font=("Segoe UI", 8),
                  fg=TEXT3, bg=BG).pack(side="right")
 
         if logs:
@@ -1517,6 +1547,8 @@ def main():
             0x10,
         )
         sys.exit(1)
+
+    capture_dashboard_history_start()
 
     ui_available = check_tkinter_available()
     if not ui_available:

@@ -47,7 +47,8 @@
 
 | Section | Description |
 |---------|-------------|
-| `ui` | Dashboard/toggle state such as `calm_mode` and `rec_overlay` |
+| `ui` | Dashboard/toggle state such as `calm_mode`, `rec_overlay`, `dashboard_history_entries`, and `preserve_dashboard_history` |
+| `logging` | History persistence (`save_history`) and dashboard history visibility |
 | `hotkeys` | Dictation shortcut |
 | `audio` | Recording sample rate, beep volume, and `silence_timeout_seconds` (auto-stop after sustained silence; `0` disables it) |
 | `model` | Faster Whisper model size, device, and compute type |
@@ -57,7 +58,7 @@
 When the app writes `calm_mode` or `rec_overlay`, it preserves the full config structure and writes readable indented JSON.
 
 ### Tray Icon Interaction
-- **Left click:** Opens dashboard popup (dark-themed, slide-up animation). Shows status (Ready/Recording/Loading), today's stats (dictations + minutes), last 8 dictations, and action buttons (Calm Mode, Restart, Quit). Closes automatically when recording starts. Toggle behavior: second click closes dashboard
+- **Left click:** Opens dashboard popup (dark-themed, slide-up animation). Shows status (Ready/Recording/Loading), today's stats (dictations + minutes), the configured number of previous dictations, and action buttons (Calm Mode, Restart, Quit). Closes automatically when recording starts. Toggle behavior: second click closes dashboard
 - **Right click:** Native context menu with Calm Mode toggle, Restart, Quit
 
 ### Tray Menu (Right Click)

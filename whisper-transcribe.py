@@ -43,7 +43,7 @@ use_project_venv()
 configure_cuda_dlls()
 
 
-def transcribe(audio_path: str) -> None:
+def transcribe(audio_path: str, language: str) -> None:
     from faster_whisper import WhisperModel
 
     audio_file = Path(audio_path)
@@ -71,7 +71,7 @@ def transcribe(audio_path: str) -> None:
 
     segments, info = model.transcribe(
         str(audio_file),
-        language="de",
+        language=language,
         beam_size=5,
         vad_filter=True,           # Filters out silence
         vad_parameters=dict(
@@ -136,4 +136,9 @@ if __name__ == "__main__":
         print("No file provided.")
         sys.exit(1)
 
-    transcribe(audio_file)
+    language = input("Source language (e.g. en, de, fr): ").strip().lower()
+    if not language:
+        print("No source language provided.")
+        sys.exit(1)
+
+    transcribe(audio_file, language)

@@ -12,9 +12,8 @@ if "%SCRIPT_DIR:~-1%"=="\" set "SCRIPT_DIR=%SCRIPT_DIR:~0,-1%"
 
 set "KEEP_DATA=1"
 set "KEEP_MODELS=1"
-set "REMOVE_SHORTCUT=0"
 
-echo [1/6] Removing autostart registry entries...
+echo [1/5] Removing autostart registry entries...
 reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v WhisperDiktiertool >nul 2>&1
 if errorlevel 1 (
     echo   Autostart registry key not found.
@@ -28,16 +27,24 @@ if errorlevel 1 (
 )
 
 echo.
-echo [2/6] Local data preference...
-choice /c YN /n /m "Keep local logs/config/history files? [Y/N]: "
+echo [2/5] Local data preference...
+choice /c YN /n /m "Keep local logs/history files? [Y/N]: "
 if errorlevel 2 (
     set "KEEP_DATA=0"
 ) else (
     set "KEEP_DATA=1"
 )
 
+if "%KEEP_DATA%"=="0" (
+    type nul > "%SCRIPT_DIR%\whisper-history.log"
+    type nul > "%SCRIPT_DIR%\whisper-error.log"
+    echo   Emptied logs and history.
+) else (
+    echo   Kept logs/history files.
+)
+
 echo.
-echo [3/6] Model cache preference...
+echo [3/5] Model cache preference...
 choice /c YN /n /m "Keep downloaded Whisper models/cache? [Y/N]: "
 if errorlevel 2 (
     set "KEEP_MODELS=0"
@@ -45,84 +52,50 @@ if errorlevel 2 (
     set "KEEP_MODELS=1"
 )
 
-echo.
-echo [4/6] Extra cleanup option...
-choice /c YN /n /m "Remove desktop shortcut 'Whisper Restart.lnk' if found? [Y/N]: "
-if errorlevel 2 (
-    set "REMOVE_SHORTCUT=0"
-) else (
-    set "REMOVE_SHORTCUT=1"
-)
-
-echo.
-echo [5/6] Removing local environment and caches...
-if exist "%SCRIPT_DIR%\.venv" (
-    rmdir /s /q "%SCRIPT_DIR%\.venv" >nul 2>&1
-    if errorlevel 1 (
-        echo   [WARNING] Could not remove .venv (it may be in use).
-    ) else (
-        echo   Removed .venv
-    )
-) else (
-    echo   No .venv folder found.
-)
-
-for /d /r "%SCRIPT_DIR%" %%D in (__pycache__) do (
-    rmdir /s /q "%%~fD" >nul 2>&1
-)
-echo   Removed Python __pycache__ folders (if any).
-
-if "%KEEP_DATA%"=="0" (
-    > "%SCRIPT_DIR%\whisper-history.log" (
-    )
-    > "%SCRIPT_DIR%\whisper-error.log" (
-    )
-    if exist "%SCRIPT_DIR%\whisper-config.json" del "%SCRIPT_DIR%\whisper-config.json" >nul 2>&1
-    echo   Emptied logs and removed local config.
-) else (
-    echo   Kept logs/config/history files.
-)
-
 if "%KEEP_MODELS%"=="0" (
-    call :DeleteWhisperModels "%USERPROFILE%\.cache\huggingface\hub"
-    call :DeleteWhisperModels "%LOCALAPPDATA%\huggingface\hub"
+    if defined HF_HUB_CACHE (
+        call :DeleteWhisperModels "%HF_HUB_CACHE%"
+    ) else if defined HF_HOME (
+        call :DeleteWhisperModels "%HF_HOME%\hub"
+    ) else (
+        call :DeleteWhisperModels "%USERPROFILE%\.cache\huggingface\hub"
+        call :DeleteWhisperModels "%LOCALAPPDATA%\huggingface\hub"
+    )
     echo   Requested model cache cleanup complete.
 ) else (
     echo   Kept downloaded Whisper models/cache.
 )
 
-if "%REMOVE_SHORTCUT%"=="1" (
-    call :RemoveRestartShortcut "%USERPROFILE%\Desktop\Whisper Restart.lnk"
-    if defined OneDrive call :RemoveRestartShortcut "%OneDrive%\Desktop\Whisper Restart.lnk"
-) else (
-    echo   Kept desktop restart shortcut.
+echo.
+echo [4/5] Removing local environment and caches...
+call :RemoveVenv "%SCRIPT_DIR%\.venv"
+
+for /d /r "%SCRIPT_DIR%" %%D in ("__pycache__") do (
+    rmdir /s /q "%%~fD" >nul 2>&1
 )
+echo   Removed Python __pycache__ folders (if any).
 
 echo.
-echo [6/6] Uninstall summary
+echo [5/5] Uninstall summary
 echo ============================================
 echo   Registry autostart entry removed (if present)
 echo   Startup leftovers cleaned
-echo   Virtual environment removed: .venv
+echo   Virtual environment cleanup attempted: .venv
 if "%KEEP_DATA%"=="0" (
-    echo   Local logs/config: removed or emptied
+    echo   Local logs/history: emptied
 ) else (
-    echo   Local logs/config: kept
+    echo   Local logs/history: kept
 )
 if "%KEEP_MODELS%"=="0" (
     echo   Downloaded models/cache: cleanup attempted
 ) else (
     echo   Downloaded models/cache: kept
 )
-if "%REMOVE_SHORTCUT%"=="1" (
-    echo   Desktop restart shortcut: cleanup attempted
-) else (
-    echo   Desktop restart shortcut: kept
-)
 echo ============================================
 echo.
 echo If Whisper is still running, close it manually from the system tray or Task Manager.
 echo.
+
 pause
 exit /b 0
 
@@ -134,26 +107,59 @@ if not exist "%HF_HUB%" (
 )
 
 for %%P in (
-    "models--Systran--faster-whisper-large-v3*"
-    "models--openai--whisper-large-v3*"
-    "models--TheChola--whisper-large-v3-turbo-german-faster-whisper*"
-    "models--guillaumekln--faster-whisper-*"
+    "models--Systran--faster-whisper-large-v3"
+    "models--mobiuslabsgmbh--faster-whisper-large-v3-turbo"
 ) do (
-    for /d %%D in ("%HF_HUB%\%%~P") do (
-        rmdir /s /q "%%~fD" >nul 2>&1
+    if exist "%HF_HUB%\%%~P\" (
+        rmdir /s /q "%HF_HUB%\%%~P"
+        if exist "%HF_HUB%\%%~P\" (
+           echo   [WARNING] Could not remove: %HF_HUB%\%%~P
+        ) else (
+            echo   Removed: %HF_HUB%\%%~P
+        )
+    ) else (
+        echo   Not found: %HF_HUB%\%%~P
     )
 )
 echo   Cleaned Whisper model folders under: %HF_HUB%
 goto :eof
 
-:RemoveRestartShortcut
-set "SHORTCUT_PATH=%~1"
-if exist "%SHORTCUT_PATH%" (
-    del "%SHORTCUT_PATH%" >nul 2>&1
-    if errorlevel 1 (
-        echo   [WARNING] Could not remove: %SHORTCUT_PATH%
+:RemoveVenv
+set "VENV_PATH=%~1"
+if not exist "%VENV_PATH%" (
+    echo   No .venv folder found.
+    goto :eof
+)
+
+attrib -r "%VENV_PATH%" /s /d >nul 2>&1
+
+rmdir /s /q "%VENV_PATH%" >nul 2>&1
+if errorlevel 1 (
+    echo   [WARNING] Could not remove .venv.
+    echo   Common causes:
+    echo     - a python.exe/pythonw.exe process is still running from this project
+    echo     - a terminal/file explorer is open inside .venv
+    echo     - antivirus is temporarily locking files
+    echo   If a Whipser-Type instance was launched previously, you may need to kill
+    echo   python process (or restart the computer) before you can properly uninstall.
+    choice /c YN /n /m "   Retry removing .venv now? [Y/N]: "
+    if errorlevel 2 (
+        echo   Skipped .venv removal.
+        goto :eof
     ) else (
-        echo   Removed: %SHORTCUT_PATH%
+        goto :RemoveVenvRetry
     )
+) else (
+    echo   Removed .venv
+    goto :eof
+)
+
+:RemoveVenvRetry
+rmdir /s /q "%VENV_PATH%" >nul 2>&1
+if errorlevel 1 (
+    echo   [WARNING] .venv is still locked and was not removed.
+) else (
+    echo   Removed .venv
 )
 goto :eof
+

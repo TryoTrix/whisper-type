@@ -56,7 +56,7 @@ Alle Einstellungen liegen in `whisper-config.json` (versioniert, striktes Schema
 | `audio` | `sample_rate` (16000), `beep_volume` (0.1), `silence_timeout_seconds` (20, 0 = aus) |
 | `model` | `size` (large-v3-turbo), `device` (cuda), `compute_type` (int8_float16) |
 | `transcription` | `dictation_language` (de), `beam_size` (3), `vad_filter` (true), `initial_prompt`, `no_speech_threshold` (null, bei Deutsch unzuverlaessig!), `short_text_max_words` (3), `debug_transcription` (true) |
-| `post_processing` | `apply_spoken_punctuation` (true), `spoken_punctuation`, `word_corrections` (TryoTrix-Fixes), `hallucination_phrases` |
+| `post_processing` | `apply_spoken_punctuation` (true), `spoken_punctuation`, `word_corrections` (ß→ss, TryoTrix-Fixes), `hallucination_phrases` |
 
 Ueberholt seit PR #1: Die frueheren Script-Konstanten (`MODEL_SIZE`, `INITIAL_PROMPT`, `SPOKEN_PUNCTUATION`, `WORD_CORRECTIONS`, `NO_SPEECH_THRESHOLD`, `DEBUG_TRANSCRIPTION`, `SHORT_TEXT_MAX_WORDS`, `HALLUCINATION_PHRASES`) existieren nicht mehr im Code, alles lebt in der JSON-Config.
 
@@ -266,6 +266,7 @@ Deltas gegenueber master:
 2. UI-Texte deutsch: Tray-Tooltip (Bereit/Aufnahme/Transkribiere, "Heute: 5x"), Dashboard (Diktate, Min gespart, VERLAUF, Neustart, Beenden), Fehlermeldungen. Log-Eintraege bleiben englisch (Tags wie [PERF]/[ERROR] werden vom Code geparst)
 3. `whisper-transcribe.py`: Sprache als optionales 2. CLI-Argument mit Default `de` statt interaktiver Pflicht-Abfrage
 4. README-Hinweis auf diesen Branch
+5. Schweizer Schreibweise: `ß` wird automatisch durch `ss` ersetzt (Eintrag in `post_processing.word_corrections`, seit 14.08.2026, z.B. "außerdem" → "ausserdem")
 
 Upstream-Updates einspielen:
 1. `git checkout master && git pull` danach `git checkout deutsch && git merge master`

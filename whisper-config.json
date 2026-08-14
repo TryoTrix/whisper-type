@@ -44,6 +44,7 @@
             "[,\\s]*[-–]?\\s*Anführungszeichen[,\\s]*": "\""
         },
         "word_corrections": {
+            "ß": "ss",
             "\\bTrial[\\s-]?Tricks?\\b": "TryoTrix",
             "\\bTry[\\s-]?o[\\s-]?Tricks?\\b": "TryoTrix",
             "\\bTryo[\\s-]?Tricks?\\b": "TryoTrix",

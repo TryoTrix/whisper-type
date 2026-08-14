@@ -4,6 +4,8 @@ Local voice-to-text dictation for Windows. Press a hotkey, speak, text appears. 
 
 **[Download ZIP](https://github.com/TryoTrix/whisper-type/archive/refs/heads/master.zip)** | Requires Windows + NVIDIA GPU + Python 3.12+
 
+> **Branch `deutsch`:** German-tuned working version (German CLAUDE.md and UI texts, `whisper-transcribe.py` defaults to German). `master` is the English upstream.
+
 ![Demo](demo.gif)
 
 ## Features

@@ -173,7 +173,7 @@ def update_tray(status_text, icon_img):
         stats = ""
         if count > 0:
             minutes = total_sec / 60
-            stats = f" | Today: {count}x, {minutes:.1f} min"
+            stats = f" | Heute: {count}x, {minutes:.1f} Min"
         tray_icon.title = f"Whisper-Type - {status_text}{stats}"
 
 
@@ -1048,11 +1048,11 @@ class RecordingOverlay:
         dot_cv.pack(side="left", padx=(0, 8), pady=3)
 
         if recording:
-            dot_color, status_text = ACCENT, "Recording..."
+            dot_color, status_text = ACCENT, "Aufnahme..."
         elif model is not None:
-            dot_color, status_text = GREEN, "Ready"
+            dot_color, status_text = GREEN, "Bereit"
         else:
-            dot_color, status_text = "#71717a", "Loading model..."
+            dot_color, status_text = "#71717a", "Lade Modell..."
 
         dot_cv.create_oval(1, 1, 9, 9, fill=dot_color, outline=dot_color)
 
@@ -1069,7 +1069,7 @@ class RecordingOverlay:
         count, total_sec = get_today_stats()
         minutes = total_sec / 60
 
-        tk.Label(main, text="TODAY", font=("Segoe UI Semibold", 9),
+        tk.Label(main, text="HEUTE", font=("Segoe UI Semibold", 9),
                  fg=TEXT3, bg=BG).pack(anchor="w", pady=(0, 10))
 
         cards_row = tk.Frame(main, bg=BG)
@@ -1095,8 +1095,8 @@ class RecordingOverlay:
             tk.Label(content, text=label, font=("Segoe UI", 9),
                      fg=TEXT2, bg=CARD).pack(anchor="w", pady=(2, 0))
 
-        make_stat_card(cards_row, count, "Dictations", GREEN, {"padx": (0, 5)})
-        make_stat_card(cards_row, f"{minutes:.1f}", "Min Saved", AMBER, {"padx": (5, 0)})
+        make_stat_card(cards_row, count, "Diktate", GREEN, {"padx": (0, 5)})
+        make_stat_card(cards_row, f"{minutes:.1f}", "Min gespart", AMBER, {"padx": (5, 0)})
 
         # Divider
         tk.Frame(main, bg=DIVIDER, height=1).pack(fill="x", pady=(0, 16))
@@ -1108,10 +1108,10 @@ class RecordingOverlay:
         history_hdr = tk.Frame(main, bg=BG)
         history_hdr.pack(fill="x", pady=(0, 10))
 
-        tk.Label(history_hdr, text="HISTORY", font=("Segoe UI Semibold", 9),
+        tk.Label(history_hdr, text="VERLAUF", font=("Segoe UI Semibold", 9),
                  fg=TEXT3, bg=BG).pack(side="left")
 
-        tk.Label(history_hdr, text="Click on a line to copy it to the clipboard", font=("Segoe UI", 8),
+        tk.Label(history_hdr, text="Zeile anklicken zum Kopieren", font=("Segoe UI", 8),
                  fg=TEXT3, bg=BG).pack(side="right")
 
         if logs:
@@ -1170,7 +1170,7 @@ class RecordingOverlay:
                     w.bind("<Leave>", lambda e, ws=all_widgets: [
                         x.configure(bg=BG) for x in ws])
         else:
-            tk.Label(main, text="No dictations yet",
+            tk.Label(main, text="Noch keine Diktate",
                      font=("Segoe UI", 9), fg=TEXT3, bg=BG).pack(anchor="w", pady=(0, 4))
 
         # Divider
@@ -1195,8 +1195,8 @@ class RecordingOverlay:
         else:
             make_action_btn(btns, "REC Overlay", self._dash_toggle_rec_overlay)
 
-        make_action_btn(btns, "\u21bb Restart", self._dash_restart)
-        make_action_btn(btns, "\u23fb Quit", self._dash_quit)
+        make_action_btn(btns, "\u21bb Neustart", self._dash_restart)
+        make_action_btn(btns, "\u23fb Beenden", self._dash_quit)
 
         # Positioning and animation
         win.update_idletasks()
@@ -1279,14 +1279,14 @@ def load_model():
         )
         load_time = time.time() - t0
         append_to_history(f"[STARTUP] Model loaded in {load_time:.1f}s")
-        update_tray(f"Ready ({hotkey_display_text()})", create_icon_idle())
+        update_tray(f"Bereit ({hotkey_display_text()})", create_icon_idle())
         play_ready_sound()
     except Exception:
         # Write error to log file (pythonw has no console)
         log_path = os.path.join(os.path.dirname(__file__), "whisper-error.log")
         with open(log_path, "w", encoding="utf-8") as f:
             f.write(traceback.format_exc())
-        update_tray("ERROR - see whisper-error.log", create_icon_loading())
+        update_tray("FEHLER - siehe whisper-error.log", create_icon_loading())
 
 
 def audio_callback(indata, frames, time_info, status):
@@ -1329,7 +1329,7 @@ def start_recording():
     )
     stream.start()
 
-    update_tray("Recording...", create_icon_recording())
+    update_tray("Aufnahme...", create_icon_recording())
 
     silence_timeout = float(CONFIG["audio"]["silence_timeout_seconds"])
     if silence_timeout > 0:
@@ -1366,10 +1366,10 @@ def stop_recording_and_transcribe():
     # Play sound AFTER stopping (recording already ended)
     play_stop_sound()
 
-    update_tray("Transcribing...", create_icon_loading())
+    update_tray("Transkribiere...", create_icon_loading())
 
     if not audio_chunks:
-        update_tray(f"Ready ({hotkey_display_text()})", create_icon_idle())
+        update_tray(f"Bereit ({hotkey_display_text()})", create_icon_idle())
         return
 
     chunk_count = len(audio_chunks)
@@ -1389,7 +1389,7 @@ def stop_recording_and_transcribe():
             pass
 
     if duration < 0.3:
-        update_tray(f"Ready ({hotkey_display_text()})", create_icon_idle())
+        update_tray(f"Bereit ({hotkey_display_text()})", create_icon_idle())
         return
 
     try:
@@ -1453,7 +1453,7 @@ def stop_recording_and_transcribe():
     except Exception as e:
         append_to_history(f"[ERROR] Transcription failed: {e}")
 
-    update_tray(f"Ready ({hotkey_display_text()})", create_icon_idle())
+    update_tray(f"Bereit ({hotkey_display_text()})", create_icon_idle())
 
 
 def hotkey_loop():
@@ -1510,7 +1510,7 @@ def on_toggle_calm(icon, item):
 def on_activate(icon, item):
     """Open/close dashboard on left click of tray icon."""
     if ui_error_message:
-        user32.MessageBoxW(None, ui_error_message, "Whisper UI unavailable", 0x40)
+        user32.MessageBoxW(None, ui_error_message, "Whisper UI nicht verfügbar", 0x40)
         return
     _dashboard_toggle.set()
 
@@ -1531,8 +1531,8 @@ def main():
         log_config_error("failed to load whisper-config.json", exc)
         user32.MessageBoxW(
             None,
-            f"Could not load required config file:\n{CONFIG_PATH}\n\n{exc}",
-            "Whisper config error",
+            f"Config-Datei konnte nicht geladen werden:\n{CONFIG_PATH}\n\n{exc}",
+            "Whisper Config-Fehler",
             0x10,
         )
         sys.exit(1)
@@ -1542,10 +1542,10 @@ def main():
     ui_available = check_tkinter_available()
     if not ui_available:
         ui_error_message = (
-            "The overlay and dashboard cannot be displayed because this Python "
-            "installation does not include tkinter.\n\n"
-            "Repair the Python installation: Modify > enable 'tcl/tk and IDLE', "
-            "then recreate the venv or rerun install.bat."
+            "Overlay und Dashboard können nicht angezeigt werden, weil diese "
+            "Python-Installation kein tkinter enthält.\n\n"
+            "Python-Installation reparieren: Modify > 'tcl/tk and IDLE' aktivieren, "
+            "dann .venv neu erstellen oder install.bat erneut ausführen."
         )
 
     if ui_available:
@@ -1555,14 +1555,14 @@ def main():
         )
     else:
         menu = pystray.Menu(
-            pystray.MenuItem("UI unavailable (tkinter missing)", on_activate, default=True),
-            pystray.MenuItem("Restart", on_restart),
-            pystray.MenuItem("Quit", on_quit),
+            pystray.MenuItem("UI nicht verfügbar (tkinter fehlt)", on_activate, default=True),
+            pystray.MenuItem("Neustart", on_restart),
+            pystray.MenuItem("Beenden", on_quit),
         )
     tray_icon = pystray.Icon(
         "whisper-dictate",
         create_icon_loading(),
-        "Whisper-Type - UI unavailable (tkinter missing)" if not ui_available else "Whisper-Type - Loading model...",
+        "Whisper-Type - UI nicht verfügbar (tkinter fehlt)" if not ui_available else "Whisper-Type - Lade Modell...",
         menu,
     )
 

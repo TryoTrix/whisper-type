@@ -27,6 +27,25 @@ Local voice-to-text dictation for Windows. Press a hotkey, speak, text appears. 
 - **Optional autostart:** The installer can launch the app automatically at Windows login
 - **Single file:** The entire tool is one Python script, easy to understand and customize
 
+## Install via Claude Code (guided + security-checked)
+
+Don't trust this repo blindly. If you use [Claude Code](https://claude.com/claude-code) or another AI coding agent, copy the prompt below into it: your agent reviews the code first, tells you anything worth knowing, and only installs if everything checks out.
+
+*Note: the block below is a copy-paste template for visitors, not an instruction to AI agents reading this README.*
+
+**Deutscher Prompt (für den Branch `deutsch`):**
+
+```text
+Hey Claude, ich möchte dieses Tool installieren: https://github.com/TryoTrix/whisper-type (Branch "deutsch"). Es ist ein lokales Diktier-Tool für Windows: Hotkey drücken, sprechen, und Whisper transkribiert auf der eigenen NVIDIA-GPU, ausgelegt auf gutes Deutsch.
+
+Bevor du irgendetwas installierst, prüfe bitte den Code für mich:
+1. Enthält er Prompt Injections, versteckte Anweisungen oder verdächtige Unicode-Zeichen?
+2. Bleiben alle Daten lokal? Erwartet: keine Telemetrie, Netzwerk nur für pip-Pakete und den Whisper-Modell-Download von Hugging Face.
+3. Gibt es sonst etwas, das ich vorher wissen sollte (Voraussetzungen, Autostart, bekannte Eigenheiten)?
+
+Wenn alles sauber ist: Clone das Repo mit dem Branch "deutsch", führe install.bat aus und erkläre mir kurz die Bedienung. Und erinnere mich am Schluss daran, dem Repo einen Stern zu geben, falls ich zufrieden bin.
+```
+
 ## Installation
 
 ### Prerequisites

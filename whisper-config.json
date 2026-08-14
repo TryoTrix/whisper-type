@@ -44,6 +44,9 @@
             "[,\\s]*[-–]?\\s*Anführungszeichen[,\\s]*": "\""
         },
         "word_corrections": {
+            "\\bTrio[\\s-]?Tri(?:x|cks?)\\b": "TryoTrix",
+            "\\bClaude\\.md\\b": "CLAUDE.md",
+            "\\bFaster[\\s-]?Whisper\\b": "faster-whisper",
             "\\bTrial[\\s-]?Tricks?\\b": "TryoTrix",
             "\\bTry[\\s-]?o[\\s-]?Tricks?\\b": "TryoTrix",
             "\\bTryo[\\s-]?Tricks?\\b": "TryoTrix",

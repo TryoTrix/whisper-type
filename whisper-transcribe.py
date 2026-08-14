@@ -4,8 +4,11 @@ Whisper Transcription - Audio to Text (German)
 Uses faster-whisper with the large-v3 model on GPU.
 
 Usage:
-    python whisper-transcribe.py "path/to/audiofile.mp3"
+    python whisper-transcribe.py "path/to/audiofile.mp3" [language]
     python whisper-transcribe.py                              (prompts for file)
+
+Pass the language code (e.g. en, de, fr) as second argument for scripted
+use; without it, the script asks interactively.
 
 Supported formats: mp3, wav, m4a, flac, ogg, wma, aac, mp4, mkv, avi
 """
@@ -136,7 +139,10 @@ if __name__ == "__main__":
         print("No file provided.")
         sys.exit(1)
 
-    language = input("Source language (e.g. en, de, fr): ").strip().lower()
+    if len(sys.argv) > 2:
+        language = sys.argv[2].strip().lower()
+    else:
+        language = input("Source language (e.g. en, de, fr): ").strip().lower()
     if not language:
         print("No source language provided.")
         sys.exit(1)

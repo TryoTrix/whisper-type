@@ -262,16 +262,19 @@ python whisper-transcribe.py "pfad/zur/audiodatei.mp3" [sprache]
 
 Der Branch `deutsch` ist die aktive Arbeitsversion auf diesem PC (ausgecheckt; Autostart, CTRL+ALT+W und whisper-restart.bat nutzen automatisch den ausgecheckten Stand). `master` bleibt englischer Upstream fuer Oeffentlichkeit und kuenftige PRs.
 
-Deltas gegenueber master:
+**SYNC-REGEL (14.08.2026, vom User festgelegt):** Jede neue Aenderung gehoert auf BEIDE Branches. Ablauf: zuerst auf `master` bauen (englisch/neutral), pushen, dann `git merge master` in `deutsch` und dort nur die Labels eindeutschen. NUR die 4 Deltas unten bleiben deutsch-only. Nach jeder Arbeits-Session pruefen: `git log deutsch..master` muss leer sein (deutsch enthaelt alles von master) und `git diff master deutsch --stat` darf nur CLAUDE.md, whisper-dictate.py, whisper-transcribe.py und whisper-config.json zeigen.
+
+Deltas gegenueber master (Stand 14.08.2026, bewusst deutsch-only):
 1. Deutsche CLAUDE.md (diese Datei) statt der englischen Uebersetzung
-2. UI-Texte deutsch: Tray-Tooltip (Bereit/Aufnahme/Transkribiere, "Heute: 5x"), Dashboard (Diktate, Min gespart, VERLAUF, Neustart, Beenden), Fehlermeldungen. Log-Eintraege bleiben englisch (Tags wie [PERF]/[ERROR] werden vom Code geparst)
-3. `whisper-transcribe.py`: Sprache als optionales 2. CLI-Argument mit Default `de` statt interaktiver Pflicht-Abfrage
-4. README-Hinweis auf diesen Branch
-5. Schweizer Schreibweise: `ß` wird automatisch durch `ss` ersetzt (Eintrag in `post_processing.word_corrections`, seit 14.08.2026, z.B. "außerdem" → "ausserdem")
+2. UI-Texte deutsch: Tray-Tooltip (Bereit/Aufnahme/Transkribiere, "Heute: 5x"), Dashboard (Diktate, Min gespart, VERLAUF, Silence-Stopp/Aus, Neustart, Beenden), Fehlermeldungen. Log-Eintraege bleiben englisch (Tags wie [PERF]/[ERROR] werden vom Code geparst)
+3. `whisper-transcribe.py`: ohne Sprach-Argument Default `de` (auf master erscheint stattdessen die interaktive Abfrage; das optionale 2. CLI-Argument gibt es auf beiden Branches)
+4. whisper-config.json: Schweizer `ß` → `ss` Regel in `post_processing.word_corrections` (z.B. "außerdem" → "ausserdem") + persoenliche Werte (silence_timeout_seconds 0, rec_overlay). Die uebrigen Wortkorrekturen (TryoTrix, CLAUDE.md, faster-whisper) sind auf beiden Branches
+
+README ist seit 14.08.2026 abends auf beiden Branches IDENTISCH (Branch-Hinweis + zweisprachiger Claude-Code-Install-Prompt), bei Merge-Konflikt dort die master-Version nehmen.
 
 Upstream-Updates einspielen:
 1. `git checkout master && git pull` danach `git checkout deutsch && git merge master`
-2. Konflikte: CLAUDE.md/README immer unsere Version behalten, Code-Konflikte einzeln pruefen (UI-Strings ggf. neu eindeutschen)
+2. Konflikte: CLAUDE.md immer unsere Version, README master-Version, whisper-config.json/whisper-transcribe.py unsere Version (enthalten die DE-Deltas), Code-Konflikte in whisper-dictate.py einzeln pruefen (UI-Strings ggf. neu eindeutschen)
 3. Neustart (CTRL+ALT+W) + Testdiktat, [PERF]-Zeile im Log gegen Baseline pruefen
 
 ---

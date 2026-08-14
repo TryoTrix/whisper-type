@@ -113,7 +113,6 @@ Say the word, the tool inserts the character. This can be enabled or disabled wi
 | Gedankenstrich | ` - ` |
 | Schrägstrich / Slash | `/` |
 | Anführungszeichen | `"` |
-| Punkt | `.` |
 
 ## Configuration
 

@@ -41,8 +41,7 @@
             "[,\\s]*[-–]?\\s*Fragezeichen": "?",
             "[,\\s]*[-–]?\\s*Gedankenstrich[,\\s]*": " - ",
             "[,\\s]*[-–]?\\s*(?:Schrägstrich|Slash)[,\\s]*": "/",
-            "[,\\s]*[-–]?\\s*Anführungszeichen[,\\s]*": "\"",
-            "[,\\s]*[-–]?\\s*Punkt": "."
+            "[,\\s]*[-–]?\\s*Anführungszeichen[,\\s]*": "\""
         },
         "word_corrections": {
             "\\bTrial[\\s-]?Tricks?\\b": "TryoTrix",

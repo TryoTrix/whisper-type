@@ -1,7 +1,7 @@
 {
     "ui": {
         "calm_mode": false,
-        "rec_overlay": false,
+        "rec_overlay": true,
         "dashboard_history_entries": 8,
         "preserve_dashboard_history": true
     },
@@ -15,7 +15,7 @@
     "audio": {
         "sample_rate": 16000,
         "beep_volume": 0.1,
-        "silence_timeout_seconds": 20
+        "silence_timeout_seconds": 0
     },
     "model": {
         "size": "large-v3-turbo",

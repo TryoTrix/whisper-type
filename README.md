@@ -20,7 +20,7 @@ Local voice-to-text dictation for Windows. Press a hotkey, speak, text appears. 
 - **Hallucination filter:** Known Whisper phantom outputs are detected and discarded
 - **System tray:** Runs quietly in the background with a color-coded status icon (gray/green/red)
 - **Audio feedback:** Beep tones on start/stop so you know when recording begins and ends
-- **Silence auto-stop:** Automatically stops a forgotten recording after a configurable period of silence
+- **Silence auto-stop:** Automatically stops a forgotten recording after a configurable period of silence. Adjustable directly from the dashboard in 5s steps (`0` = off)
 - **History log:** All transcriptions are saved with timestamps to `whisper-history.log`
 - **Optional autostart:** The installer can launch the app automatically at Windows login
 - **Single file:** The entire tool is one Python script, easy to understand and customize

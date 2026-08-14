@@ -421,6 +421,15 @@ def save_ui_config_value(key, value):
         pass
 
 
+def save_config_value(section, key, value):
+    """Save one config value in any section without rewriting unrelated settings."""
+    try:
+        CONFIG.setdefault(section, {})[key] = value
+        _write_config(CONFIG)
+    except Exception:
+        pass
+
+
 def log_ui_error(context, exc):
     """Append UI/runtime errors to whisper-error.log (pythonw has no console)."""
     import traceback
@@ -503,6 +512,7 @@ class RecordingOverlay:
         self._t0 = 0
         self._dashboard_win = None
         self._dashboard_visible = False
+        self._silence_label = None
 
     def _create_mic_icon(self):
         """Original microphone icon as RGBA, 8x supersampling for smooth edges.
@@ -1198,6 +1208,30 @@ class RecordingOverlay:
         make_action_btn(btns, "\u21bb Neustart", self._dash_restart)
         make_action_btn(btns, "\u23fb Beenden", self._dash_quit)
 
+        # Silence auto-stop control (takes effect from the next recording)
+        silence_row = tk.Frame(main, bg=BG)
+        silence_row.pack(fill="x", pady=(12, 0))
+
+        tk.Label(silence_row, text="Silence auto-stop", font=("Segoe UI", 9),
+                 fg=TEXT2, bg=BG).pack(side="left")
+
+        def make_silence_btn(parent, text, delta):
+            btn = tk.Label(parent, text=text, font=("Segoe UI Semibold", 10),
+                           fg=TEXT, bg=BTN, padx=10, pady=1, cursor="hand2")
+            btn.pack(side="right", padx=(6, 0))
+            btn.bind("<Button-1>", lambda e: self._dash_adjust_silence(delta))
+            btn.bind("<Enter>", lambda e: btn.configure(bg=BTN_HOVER))
+            btn.bind("<Leave>", lambda e: btn.configure(bg=BTN))
+            return btn
+
+        make_silence_btn(silence_row, "+", 5)
+        current_timeout = int(float(CONFIG["audio"]["silence_timeout_seconds"]))
+        self._silence_label = tk.Label(
+            silence_row, text="Off" if current_timeout <= 0 else f"{current_timeout}s",
+            font=("Segoe UI Semibold", 9), fg=TEXT, bg=BG, width=4)
+        self._silence_label.pack(side="right", padx=(6, 0))
+        make_silence_btn(silence_row, "\u2212", -5)
+
         # Positioning and animation
         win.update_idletasks()
         win_w = max(WIDTH, win.winfo_reqwidth())
@@ -1249,6 +1283,18 @@ class RecordingOverlay:
         save_ui_config_value("rec_overlay", rec_overlay)
         self._destroy_dashboard()
         self.root.after(50, self._create_dashboard)
+
+    def _dash_adjust_silence(self, delta):
+        """Adjust silence auto-stop in 5s steps (0 disables it), applies from next recording."""
+        current = int(float(CONFIG["audio"]["silence_timeout_seconds"]))
+        new_value = max(0, min(180, current + delta))
+        save_config_value("audio", "silence_timeout_seconds", new_value)
+        if self._silence_label:
+            try:
+                self._silence_label.configure(
+                    text="Off" if new_value <= 0 else f"{new_value}s")
+            except Exception:
+                pass
 
     def _dash_restart(self):
         """Restart from dashboard."""

@@ -1,7 +1,7 @@
 {
     "ui": {
         "calm_mode": false,
-        "rec_overlay": true,
+        "rec_overlay": false,
         "dashboard_history_entries": 8,
         "preserve_dashboard_history": true
     },

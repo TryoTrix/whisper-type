@@ -34,11 +34,11 @@
 - **GPU:** CUDA int8_float16 auf RTX 4060 (~3 GB VRAM)
 - **Transkription:** `beam_size=3`, `vad_filter=True`, `condition_on_previous_text=False`, Audio wird als NumPy-Array direkt an Whisper uebergeben (kein WAV-Umweg)
 - **INITIAL_PROMPT:** Fachbegriffe die Whisper korrekt erkennen soll (z.B. CLAUDE.md). Konfigurierbar in der `INITIAL_PROMPT` Variable, kein Performance-Impact
-- **SPOKEN_PUNCTUATION:** Gesprochene Satzzeichen werden automatisch ersetzt (z.B. "Doppelpunkt" → `:`, "Fragezeichen" → `?`, "Anführungszeichen" → `"`). Konfigurierbar im `SPOKEN_PUNCTUATION` Dictionary
+- **SPOKEN_PUNCTUATION:** Gesprochene Satzzeichen werden automatisch ersetzt (z.B. "Doppelpunkt" → `:`, "Fragezeichen" → `?`, "Anführungszeichen" → `"`). Konfigurierbar im `SPOKEN_PUNCTUATION` Dictionary. "Punkt" ist bewusst NICHT enthalten (matcht Teilwörter: "Punkte" → ".e"), am 14.08.2026 erneut entfernt nachdem Commit 0d6dbed es wieder eingefuehrt hatte
 - **Ausgabe:** Transkribierter Text wird via Clipboard in das aktive Fenster eingefuegt
 - **Tray-Icon Farben:** Grau = Modell laedt, Gruen = bereit, Rot = Aufnahme laeuft
 - **Tray-Tooltip Statistik:** Zeigt heutige Diktate und Audio-Dauer im Tooltip an (z.B. "Heute: 5x, 2.1 Min"). Wird nach jedem Diktat aktualisiert, liest aus `whisper-history.log`
-- **Audio-Feedback:** Hoher Beep (800 Hz) bei Start, tiefer Beep (500 Hz) bei Stop (`winsound.Beep`)
+- **Audio-Feedback:** Hoher Beep (800 Hz) bei Start, tiefer Beep (500 Hz) bei Stop (`winsound.Beep`), sanfter Ready-Chime (G5→C6, via sounddevice) nach dem Modell-Laden (seit Commit 0d6dbed)
 - **REC-Overlay:** Roter pulsierender Balken (8px) am oberen Bildschirmrand auf allen Monitoren waehrend der Aufnahme (tkinter, click-through). Mikrofon-Icon (100x100, 8x Supersampling, r_outer=400 fuer lueckenlosen Kreis) mit Electric Border Effect: 90 pre-gerenderte Frames (3s Loop, 30fps) mit echtem 2D Pixel-Displacement (simuliert SVG feDisplacementMap). Dual-Ring-System: innerer Ring (White-hot Core + Sharp + 4 Glow-Layer, border_r=mic_r+1) und aeusserer Orbit-Ring (eigenes Noise-Feld, langsamerer Pan). Fill-Disc (200,42,42, Blur 8) hinter allen Rings fuellt den Bereich zwischen Mic-Icon und Electric Border lueckenlos. Noise-Texturen (5 Oktaven, 520x520) werden zirkulaer gepannt fuer organische Turbulenz. Alle Blur-Layer werden VOR dem Frame-Loop zu 2 Composite-Bildern zusammengefuegt (nur 2 Displacement-Ops pro Frame statt 6, keine Blur-Ops im Loop). Visuelle Effekte: Breathing Pulse (Glow-Intensitaet pulsiert per Sinus), Core-Flash (3 kurze Helligkeits-Blitze pro Loop), Dunkelrot-Compositing (halbtransparente Randpixel → dunkles Rot statt Schwarz). Pre-Rendering laeuft parallel zum Modell-Laden (~5-8s). Fallback: statisches Mic-Icon mit Fill-Disc bis Frames fertig. ~7 MB RAM fuer Frame-Liste
 - **History Log:** Jede erfolgreiche Transkription wird mit Timestamp in `whisper-history.log` gespeichert (`[2026-02-17 14:32:05] Text...`)
 
@@ -46,9 +46,10 @@
 
 | Variable | Beschreibung |
 |----------|-------------|
-| `MODEL_SIZE` | Whisper-Modell (aktuell `large-v3`) |
+| `MODEL_SIZE` | Whisper-Modell (aktuell `large-v3-turbo`) |
 | `INITIAL_PROMPT` | Fachbegriffe fuer bessere Erkennung (Komma-getrennt) |
 | `SPOKEN_PUNCTUATION` | Gesprochene Satzzeichen → echte Zeichen (Regex-Dict) |
+| `WORD_CORRECTIONS` | Whisper-Fehlerkennungen → korrekte Schreibweise (Regex-Dict, z.B. "Tryotrix"/"Trial Tricks" → TryoTrix). Seit Commit 0d6dbed |
 | `NO_SPEECH_THRESHOLD` | Deaktiviert (`None`). Whisper's `no_speech_prob` ist bei Deutsch unzuverlaessig (markiert klare Sprache mit 0.97). `vad_filter=True` uebernimmt die Stille-Erkennung |
 | `DEBUG_TRANSCRIPTION` | Segment-Details ins History-Log schreiben (True/False) |
 | `SHORT_TEXT_MAX_WORDS` | Bei <= N Woertern trailing Punkt entfernen (3) |
@@ -244,17 +245,10 @@ python whisper-transcribe.py "pfad/zur/audiodatei.mp3"
 
 ## GitHub
 
-- **Oeffentliches Repo:** `tryotrix/whisper-type` (https://github.com/tryotrix/whisper-type)
-- **Lokaler Remote:** Zeigt aktuell auf `TryoTrix/whisper.git` (veraltet/404)
-- **Problem (Stand 04.03.2026):** Die beiden Repos haben komplett unterschiedliche Git-Historien (verschiedene Hashes). Das lokale Repo hat neuere Features (Dashboard, Stats, Calm Mode) die auf `whisper-type` fehlen
-- **TODO:** Remote auf `whisper-type` umstellen und lokale Aenderungen synchronisieren (force-push noetig wegen divergierter Historien)
-
-### Fehlende Features auf whisper-type
-- Dashboard-Popup bei Tray-Linksklick (Stats, History, Click-to-Copy)
-- Calm Mode Toggle
-- Rechtsklick oeffnet Dashboard statt natives Menue
-- Daily Stats im Tray-Tooltip
-- install.bat Update (Dashboard-Hinweis)
+- **Oeffentliches Repo:** `TryoTrix/whisper-type` (https://github.com/tryotrix/whisper-type)
+- **Remote (Stand 14.08.2026):** `origin` zeigt auf `whisper-type`, Historien sind synchron (die Divergenz vom 04.03.2026 ist behoben). Lokal = origin/master = 0d6dbed, plus lokale unkommittierte Punkt-Regex-Entfernung
+- **gh CLI:** Nicht installiert. PR-Review stattdessen via `git fetch origin pull/N/head:pr-N` (Diff lokal, ohne Checkout) + GitHub REST API (api.github.com) fuer Metadaten
+- **PR #1 (offen, Stand 14.08.2026):** Externer Contributor "Vousk-prod" (Fork `vousk/whisper-type`), 23 Commits, +1250/-686: EN-Uebersetzung aller Docs/UI/Logs, whisper-config.json als einzige Config-Quelle (versioniert), venv-basierte Installation, uninstall.bat, Silence-Auto-Stop, Log-Rotation, Beep-Lautstaerke, Privacy-Mode. Security-Review 14.08.2026: sauber (keine Malware/Exfiltration/Prompt-Injection, Loeschaktionen gezielt + mit Y/N-Abfrage). Achtung bei Merge: bringt den fehlerhaften Punkt-Regex in der Config zurueck, ersetzt die deutsche CLAUDE.md durch EN, entfernt ensure_autostart()-Self-Provisioning, whisper-transcribe.py fragt Sprache interaktiv ab, lokale untracked whisper-config.json kollidiert mit der neuen versionierten
 
 ---
 

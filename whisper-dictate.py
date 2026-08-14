@@ -70,7 +70,6 @@ SPOKEN_PUNCTUATION = {
     r'[,\s]*[-–]?\s*Gedankenstrich[,\s]*': ' - ',
     r'[,\s]*[-–]?\s*(?:Schrägstrich|Slash)[,\s]*': '/',
     r'[,\s]*[-–]?\s*Anführungszeichen[,\s]*': '"',
-    r'[,\s]*[-–]?\s*Punkt': '.',
 }
 
 # Wortkorrekturen: Whisper-Fehlerkennungen → richtige Schreibweise (Regex, case-insensitive)

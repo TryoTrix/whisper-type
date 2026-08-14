@@ -63,6 +63,7 @@ Ueberholt seit PR #1: Die frueheren Script-Konstanten (`MODEL_SIZE`, `INITIAL_PR
 ### Tray-Icon Interaktion (seit PR #1)
 - **Links- UND Rechts-Klick:** Oeffnen/schliessen das Dashboard-Popup (dark-themed, slide-up Animation). Ein natives Kontextmenue gibt es nur noch als Fallback wenn tkinter fehlt. Dashboard zeigt: Status, heutige Statistik (Diktate + Minuten), Verlauf (Anzahl via `ui.dashboard_history_entries`, Klick = kopieren), Aktions-Buttons (REC Overlay, Neustart, Beenden). Schliesst sich automatisch bei Aufnahme-Start
 - **REC Overlay Button:** Toggelt `ui.rec_overlay` (roter Balken + Mic-Overlay waehrend Aufnahme an/aus), ersetzt den frueheren Calm-Mode-Button
+- **Silence-Stopp Regler:** Zeile unter den Buttons mit [−]/[+] in 5s-Schritten (0 = Aus, max 180s). Schreibt `audio.silence_timeout_seconds` direkt in die Config, gilt ab der naechsten Aufnahme ohne Neustart. Eigenes Feature vom 14.08.2026, auf master (EN) und deutsch
 - **Calm Mode:** Nur noch via `ui.calm_mode` in whisper-config.json editierbar (statisches Mic-Icon statt Electric Border). Wirkt ohne Neustart
 - **Neustart:** Beendet aktuelle Instanz, wartet 2s (Mutex-Freigabe), startet `pythonw` direkt neu via `pythonw -c "import time,subprocess;time.sleep(2);..."` (kein Terminal-Fenster)
 - **Beenden:** Beendet das Diktiertool komplett

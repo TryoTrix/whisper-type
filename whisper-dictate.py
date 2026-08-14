@@ -1212,7 +1212,7 @@ class RecordingOverlay:
         silence_row = tk.Frame(main, bg=BG)
         silence_row.pack(fill="x", pady=(12, 0))
 
-        tk.Label(silence_row, text="Silence auto-stop", font=("Segoe UI", 9),
+        tk.Label(silence_row, text="Silence-Stopp", font=("Segoe UI", 9),
                  fg=TEXT2, bg=BG).pack(side="left")
 
         def make_silence_btn(parent, text, delta):
@@ -1227,7 +1227,7 @@ class RecordingOverlay:
         make_silence_btn(silence_row, "+", 5)
         current_timeout = int(float(CONFIG["audio"]["silence_timeout_seconds"]))
         self._silence_label = tk.Label(
-            silence_row, text="Off" if current_timeout <= 0 else f"{current_timeout}s",
+            silence_row, text="Aus" if current_timeout <= 0 else f"{current_timeout}s",
             font=("Segoe UI Semibold", 9), fg=TEXT, bg=BG, width=4)
         self._silence_label.pack(side="right", padx=(6, 0))
         make_silence_btn(silence_row, "\u2212", -5)
@@ -1292,7 +1292,7 @@ class RecordingOverlay:
         if self._silence_label:
             try:
                 self._silence_label.configure(
-                    text="Off" if new_value <= 0 else f"{new_value}s")
+                    text="Aus" if new_value <= 0 else f"{new_value}s")
             except Exception:
                 pass
 

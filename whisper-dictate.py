@@ -1320,6 +1320,7 @@ def load_model():
         t0 = time.time()
         model = WhisperModel(
             str(model_config["size"]),
+            download_root=str(model_config.get("download_root", None)),
             device=str(model_config["device"]),
             compute_type=str(model_config["compute_type"]),
         )

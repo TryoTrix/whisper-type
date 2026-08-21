@@ -17,6 +17,7 @@
 | `whisper-config.json` | ALLE Einstellungen, versioniert (seit PR #1 einzige Config-Quelle, App startet nicht ohne) |
 | `whisper-error.log` | Wird bei CUDA/Modell-Fehlern erstellt (nur wenn Fehler auftritt) |
 | `whisper-history.log` | Transkriptions-Log: jede Diktierung mit Timestamp (append, UTF-8) |
+| `.claude/skills/pr-review/` | Skill `/pr-review N`: rein lesender PR-Sicherheitsscan (`pr-scan.py`) plus Runbook fuer Merge, deutsch-Sync und Neustart (`SKILL.md`), seit 21.08.2026, auf beiden Branches identisch |
 
 ---
 
@@ -54,7 +55,7 @@ Alle Einstellungen liegen in `whisper-config.json` (versioniert, striktes Schema
 | `logging` | `save_history` (false = Diktattexte nicht loggen, nur Statistik), `max_file_size_mb` (10, Datei wird bei Erreichen GELEERT) |
 | `hotkeys` | `dictation` (ctrl+alt+d) |
 | `audio` | `sample_rate` (16000), `beep_volume` (0.1), `silence_timeout_seconds` (20, 0 = aus) |
-| `model` | `size` (large-v3-turbo), `device` (cuda), `compute_type` (int8_float16) |
+| `model` | `size` (large-v3-turbo), `device` (cuda), `compute_type` (int8_float16), `download_root` (null = Standard-HF-Cache `~\.cache\huggingface\hub`, optionaler Pfad, seit PR #2) |
 | `transcription` | `dictation_language` (de), `beam_size` (3), `vad_filter` (true), `initial_prompt`, `no_speech_threshold` (null, bei Deutsch unzuverlaessig!), `short_text_max_words` (3), `debug_transcription` (true) |
 | `post_processing` | `apply_spoken_punctuation` (true), `spoken_punctuation`, `word_corrections` (ß→ss, TryoTrix-Fixes), `hallucination_phrases` |
 
@@ -252,9 +253,10 @@ python whisper-transcribe.py "pfad/zur/audiodatei.mp3" [sprache]
 ## GitHub
 
 - **Oeffentliches Repo:** `TryoTrix/whisper-type` (https://github.com/tryotrix/whisper-type)
-- **Branches (Stand 14.08.2026):** `master` = englischer Upstream-Stand (PR #1 gemerged als df7f5db, danach Punkt-Fix 4b2b584, gepusht). `deutsch` = aktive Arbeitsversion auf diesem PC (ausgecheckt, gepusht), siehe Abschnitt "Deutsche Version". Die Divergenz vom 04.03.2026 ist seit dem Sync behoben
-- **gh CLI:** Nicht installiert. PR-Review stattdessen via `git fetch origin pull/N/head:pr-N` (Diff lokal, ohne Checkout) + GitHub REST API (api.github.com) fuer Metadaten
+- **Branches (Stand 21.08.2026):** `master` = englischer Upstream-Stand (PR #1 gemerged als df7f5db, Punkt-Fix 4b2b584, PR #2 gemerged als 91bcec2 + Fix bc63547, Skill 49a6c93, alles gepusht). `deutsch` = aktive Arbeitsversion auf diesem PC (ausgecheckt, gepusht), siehe Abschnitt "Deutsche Version". Die Divergenz vom 04.03.2026 ist seit dem Sync behoben
+- **gh CLI:** Nicht installiert. PR-Review seit 21.08.2026 ueber den Skill `/pr-review N` (`.claude/skills/pr-review/`): `pr-scan.py` fetcht den PR-Head nach `pr-N` (nie Checkout, nichts wird ausgefuehrt) und scannt Metadaten, Links, versteckte Unicode-Zeichen, gefaehrliche Code-Muster und Prompt-Injection-Phrasen; `SKILL.md` enthaelt Checkliste, Urteilsregeln und den Ablauf Merge (temporaerer Worktree im Scratchpad) → deutsch-Sync → Neustart → Test. Ohne Go des Users kein Merge, kein Push, kein Kommentar
 - **PR #1 (GEMERGED 14.08.2026 als df7f5db):** Externer Contributor "Vousk-prod" (Fork `vousk/whisper-type`), 23 Commits, +1250/-686: EN-Uebersetzung aller Docs/UI/Logs, whisper-config.json als einzige Config-Quelle (versioniert), venv-basierte Installation, uninstall.bat, Silence-Auto-Stop, Log-Rotation, Beep-Lautstaerke, Privacy-Mode. Security-Review vor dem Merge (kompletter Diff + Unicode-/Pattern-Scans): sauber, keine Malware/Exfiltration/Prompt-Injection, Loeschaktionen gezielt + mit Y/N-Abfrage. Der fehlerhafte Punkt-Regex aus der PR-Config wurde direkt nach dem Merge auf master entfernt (4b2b584)
+- **PR #2 (GEMERGED 21.08.2026 als 91bcec2):** Externer Contributor tkhyn (Thomas Khyn, Fork `tkhyn/whisper-type`), 1 Zeile: optionales `model.download_root` an `WhisperModel` durchreichen. Security-Review (Scan + Diff + faster-whisper-Quellcode): sauber, keine Links, keine Injection. Bug im Original (`str(None)` = `"None"` als cache_dir → Modell-Neudownload in Ordner `None` fuer alle ohne den Key) im Folge-Commit bc63547 gefixt: Key optional, null/fehlend = Standard-Cache, Pfad wird per expanduser aufgeloest. Config-Key `download_root: null` + README-Zeile ergaenzt
 
 ---
 

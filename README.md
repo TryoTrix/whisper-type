@@ -167,6 +167,7 @@ All user-editable settings live in `whisper-config.json`. It is standard JSON, s
 | `model.size` | Whisper model | `large-v3-turbo` |
 | `model.device` | Faster Whisper device | `cuda` |
 | `model.compute_type` | Faster Whisper compute type | `int8_float16` |
+| `model.download_root` | Optional folder for the Hugging Face model cache (useful when several apps share the same models). `null` keeps the default `~/.cache/huggingface/hub`. Use forward slashes on Windows, e.g. `D:/models` | `null` |
 | `transcription.dictation_language` | Language code passed to `model.transcribe()` | `de` |
 | `transcription.beam_size` | Whisper beam search size | `3` |
 | `transcription.vad_filter` | Enable faster-whisper VAD | `true` |

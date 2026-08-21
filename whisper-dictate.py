@@ -1317,9 +1317,13 @@ def load_model():
         from faster_whisper import WhisperModel
 
         model_config = CONFIG["model"]
+        # Optional custom Hugging Face cache folder (PR #2); None keeps the default ~/.cache/huggingface/hub
+        download_root = model_config.get("download_root")
+        download_root = os.path.expanduser(str(download_root)) if download_root else None
         t0 = time.time()
         model = WhisperModel(
             str(model_config["size"]),
+            download_root=download_root,
             device=str(model_config["device"]),
             compute_type=str(model_config["compute_type"]),
         )

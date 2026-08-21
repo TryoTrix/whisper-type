@@ -14,9 +14,10 @@
 | `whisper-transcribe.py` | Audio file to text (CLI tool, no hotkey) |
 | `install.bat` | Setup for new PCs: packages, autostart, model download |
 | `uninstall.bat` | Cleanup tool: removes autostart and optionally logs/model cache |
-| `whisper-config.json` | Persistent settings (calm_mode etc.), created automatically |
+| `whisper-config.json` | ALL settings, versioned (single config source since PR #1, the app does not start without it) |
 | `whisper-error.log` | Created on CUDA/model errors (only when an error occurs) |
 | `whisper-history.log` | Transcription log: every dictation with timestamp (append, UTF-8) |
+| `.claude/skills/pr-review/` | `/pr-review N` skill: read-only PR security scan (`pr-scan.py`) plus the merge, German-branch sync and restart runbook (`SKILL.md`) |
 
 ---
 
@@ -51,7 +52,7 @@
 | `logging` | History text persistence (`save_history`) and history file size limit (`max_file_size_mb`) |
 | `hotkeys` | Dictation shortcut |
 | `audio` | Recording sample rate, beep volume, and `silence_timeout_seconds` (auto-stop after sustained silence; `0` disables it) |
-| `model` | Faster Whisper model size, device, and compute type |
+| `model` | Faster Whisper model size, device, compute type, and optional `download_root` (custom Hugging Face cache folder, `null` = default; since PR #2) |
 | `transcription` | Language, beam size, VAD, initial prompt, debug logging, short-text punctuation behavior |
 | `post_processing` | Spoken punctuation toggle/regexes, word corrections, and hallucination phrase filters |
 
@@ -260,17 +261,11 @@ python whisper-transcribe.py "path/to/audiofile.mp3"
 
 ## GitHub
 
-- **Public repo:** `tryotrix/whisper-type` (https://github.com/tryotrix/whisper-type)
-- **Local remote:** currently points to `TryoTrix/whisper.git` (outdated/404)
-- **Problem (as of 2026-03-04):** Both repos have completely different git histories (different hashes). Local repo has newer features (Dashboard, Stats, Calm Mode) missing from `whisper-type`
-- **TODO:** Switch remote to `whisper-type` and sync local changes (force-push required because histories diverged)
-
-### Missing Features on whisper-type
-- Dashboard popup on tray left-click (stats, history, click-to-copy)
-- Calm Mode toggle
-- Right-click opens dashboard instead of native menu
-- Daily stats in tray tooltip
-- install.bat update (dashboard note)
+- **Public repo:** `TryoTrix/whisper-type` (https://github.com/tryotrix/whisper-type)
+- **Branches:** `master` = English upstream (this file). `deutsch` = German working version used on the maintainer's PC (German UI strings, German CLAUDE.md, `whisper-transcribe.py` defaults to `de`, Swiss `ß → ss` word correction plus personal config values). Rule: every change lands on master first, then `git merge master` into `deutsch`; `git log deutsch..master` must stay empty
+- **gh CLI:** not installed. PRs are reviewed with the `/pr-review N` skill (`.claude/skills/pr-review/`): `pr-scan.py` fetches the PR head into a local `pr-N` branch (never checked out, nothing executed) and scans metadata, links, hidden unicode, dangerous code patterns and prompt-injection phrases; `SKILL.md` then covers the manual checklist, the verdict, the merge in a temporary worktree, the German-branch sync, restart and test
+- **PR #1 (merged 2026-08-14 as df7f5db):** external contributor vousk, 23 commits, +1250/-686: English translation of docs/UI/logs, `whisper-config.json` as the single config source, venv-based install, `uninstall.bat`, silence auto-stop, log rotation, beep volume, privacy mode. Security review before the merge: clean. The faulty "Punkt" regex from the PR config was removed right after the merge (4b2b584)
+- **PR #2 (merged 2026-08-21):** external contributor tkhyn, 1 line: optional `model.download_root` passed to `WhisperModel`. Security review: clean. Bug fixed in the follow-up commit: the original line passed `str(None)` = `"None"` as `cache_dir`, which would have re-downloaded the model into a folder named `None` for every user without the key
 
 ---
 

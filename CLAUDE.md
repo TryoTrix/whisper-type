@@ -33,14 +33,17 @@
 ### Funktionsweise
 - **Hotkey:** `CTRL+ALT+D` startet/stoppt die Aufnahme
 - **Modell:** `faster-whisper` large-v3-turbo, Sprache: Deutsch (gute Qualitaet, schnell)
-- **GPU:** CUDA int8_float16 auf RTX 4060 (~3 GB VRAM)
+- **GPU:** CUDA float16 auf RTX 4060 (~2 GB VRAM). Am 14.09.2026 von int8_float16 umgestellt: float16 ist auf dieser GPU 10-25% schneller, laedt schneller (keine Quantisierung beim Start) und hat keinen Quantisierungsverlust
 - **Transkription:** `beam_size=3`, `vad_filter=True`, `condition_on_previous_text=False`, Audio wird als NumPy-Array direkt an Whisper uebergeben (kein WAV-Umweg)
+- **Batched Decoding (seit 14.09.2026):** `transcription.batch_size` (Default 8, `0`/`1` = sequenziell) nutzt die `BatchedInferencePipeline` von faster-whisper: die VAD teilt die Aufnahme an Sprechpausen, die Stuecke werden parallel dekodiert. Gemessen auf RTX 4060 mit TTS-Audio: 30 s in 0.8-1.3 s statt 2.0 s, 105 s in 1.9 s statt 7.0 s, Wortfehlerrate gleich oder besser. Braucht `vad_filter=true`, sonst laeuft der sequenzielle Pfad. `[PERF]`-Zeilen enden mit `, batch 8`, wenn der Batched-Pfad lief
+- **Warm-up:** `load_model()` transkribiert vor dem Freigeben des Modells zwei Sekunden Stille (batched, 2 Clips, ohne VAD), damit das erste Diktat nach dem Start nicht mehr ~1 s langsamer ist. Log: `[STARTUP] Model loaded in 4.3s (warm-up 1.1s)`
+- **Mikrofon-Stream (seit 14.09.2026):** Ein `sd.InputStream` zu erzeugen kostet auf dem MME-Host-API 0.3-0.8 s. Darum wird der Stream vorab erzeugt (`prepare_input_stream()`, beim Start und nach jedem Diktat in einem Hintergrund-Thread) und beim Hotkey nur gestartet (~1 ms, erstes Audio nach ~150 ms). Ein erzeugter, aber gestoppter Stream zaehlt fuer Windows nicht als Mikrofon-Nutzung (per `CapabilityAccessManager`-Zeitstempel verifiziert), das Privacy-Symbol leuchtet nur waehrend der Aufnahme. Weil der Stream nach jedem Diktat neu erzeugt wird, greift auch ein gewechseltes Standard-Mikrofon; schlaegt `start()` fehl, wird einmal ein frischer Stream erzeugt, danach Tray-Meldung «Mikrofon-Fehler»
 - **Initial Prompt:** Fachbegriffe die Whisper korrekt erkennen soll (z.B. CLAUDE.md, TryoTrix). Seit PR #1 konfigurierbar via `transcription.initial_prompt` in whisper-config.json, kein Performance-Impact
 - **SPOKEN_PUNCTUATION:** Gesprochene Satzzeichen werden automatisch ersetzt (z.B. "Doppelpunkt" → `:`, "Fragezeichen" → `?`, "Anführungszeichen" → `"`). Seit PR #1 konfigurierbar via `post_processing.spoken_punctuation` in whisper-config.json. "Punkt" ist bewusst NICHT enthalten (matcht Teilwörter: "Punkte" → ".e"), am 14.08.2026 erneut entfernt nachdem Commit 0d6dbed es wieder eingefuehrt hatte
 - **Ausgabe:** Transkribierter Text wird via Clipboard in das aktive Fenster eingefuegt
 - **Tray-Icon Farben:** Grau = Modell laedt, Gruen = bereit, Rot = Aufnahme laeuft
 - **Tray-Tooltip Statistik:** Zeigt heutige Diktate und Audio-Dauer im Tooltip an (z.B. "Heute: 5x, 2.1 Min"). Wird nach jedem Diktat aktualisiert, liest aus `whisper-history.log`
-- **Audio-Feedback:** Hoher Beep (800 Hz) bei Start, tiefer Beep (500 Hz) bei Stop, sanfter Ready-Chime (G5→C6) nach dem Modell-Laden. Seit PR #1 als In-Memory-WAV via `winsound.PlaySound`, Lautstaerke via `audio.beep_volume` (0.0 = stumm bis 1.0)
+- **Audio-Feedback:** Hoher Beep (800 Hz) bei Start, tiefer Beep (500 Hz) bei Stop, sanfter Ready-Chime (G5→C6) nach dem Modell-Laden. Seit 14.09.2026 werden die Toene einmal in Temp-WAVs gerendert (`%TEMP%\whisper-type-*.wav`) und mit `winsound.PlaySound(SND_FILENAME | SND_ASYNC)` abgespielt, also ohne zu blockieren: die In-Memory-Variante aus PR #1 (`SND_MEMORY`) kann nicht asynchron spielen und blockierte den Hotkey-Thread ~300 ms pro Beep (gemessen; `winsound.Beep` vor PR #1: ~105 ms). Audio waehrend des Start-Beeps (`BEEP_DURATION_MS` + 30 ms) wird in `audio_callback` verworfen, der Beep landet nie in der Transkription. Lautstaerke via `audio.beep_volume` (0.0 = stumm bis 1.0); Fallback auf blockierendes In-Memory-Abspielen, falls die Temp-Datei nicht schreibbar ist
 - **Silence-Auto-Stop:** Aufnahme stoppt automatisch nach anhaltender Stille (`audio.silence_timeout_seconds`, Default 20s, 0 = deaktiviert). Seit PR #1
 - **REC-Overlay:** Roter pulsierender Balken (8px) am oberen Bildschirmrand auf allen Monitoren waehrend der Aufnahme (tkinter, click-through). Mikrofon-Icon (100x100, 8x Supersampling, r_outer=400 fuer lueckenlosen Kreis) mit Electric Border Effect: 90 pre-gerenderte Frames (3s Loop, 30fps) mit echtem 2D Pixel-Displacement (simuliert SVG feDisplacementMap). Dual-Ring-System: innerer Ring (White-hot Core + Sharp + 4 Glow-Layer, border_r=mic_r+1) und aeusserer Orbit-Ring (eigenes Noise-Feld, langsamerer Pan). Fill-Disc (200,42,42, Blur 8) hinter allen Rings fuellt den Bereich zwischen Mic-Icon und Electric Border lueckenlos. Noise-Texturen (5 Oktaven, 520x520) werden zirkulaer gepannt fuer organische Turbulenz. Alle Blur-Layer werden VOR dem Frame-Loop zu 2 Composite-Bildern zusammengefuegt (nur 2 Displacement-Ops pro Frame statt 6, keine Blur-Ops im Loop). Visuelle Effekte: Breathing Pulse (Glow-Intensitaet pulsiert per Sinus), Core-Flash (3 kurze Helligkeits-Blitze pro Loop), Dunkelrot-Compositing (halbtransparente Randpixel → dunkles Rot statt Schwarz). Pre-Rendering laeuft parallel zum Modell-Laden (~5-8s). Fallback: statisches Mic-Icon mit Fill-Disc bis Frames fertig. ~7 MB RAM fuer Frame-Liste
 - **History Log:** Jede erfolgreiche Transkription wird mit Timestamp in `whisper-history.log` gespeichert (`[2026-02-17 14:32:05] Text...`)
@@ -55,9 +58,9 @@ Alle Einstellungen liegen in `whisper-config.json` (versioniert, striktes Schema
 | `logging` | `save_history` (false = Diktattexte nicht loggen, nur Statistik), `max_file_size_mb` (10, Datei wird bei Erreichen GELEERT) |
 | `hotkeys` | `dictation` (ctrl+alt+d) |
 | `audio` | `sample_rate` (16000), `beep_volume` (0.1), `silence_timeout_seconds` (20, 0 = aus) |
-| `model` | `size` (large-v3-turbo), `device` (cuda), `compute_type` (int8_float16), `download_root` (null = Standard-HF-Cache `~\.cache\huggingface\hub`, optionaler Pfad, seit PR #2) |
-| `transcription` | `dictation_language` (de), `beam_size` (3), `vad_filter` (true), `initial_prompt`, `no_speech_threshold` (null, bei Deutsch unzuverlaessig!), `short_text_max_words` (3), `debug_transcription` (true) |
-| `post_processing` | `apply_spoken_punctuation` (true), `spoken_punctuation`, `word_corrections` (ß→ss, TryoTrix-Fixes), `hallucination_phrases` |
+| `model` | `size` (large-v3-turbo), `device` (cuda), `compute_type` (float16, bis 14.09.2026 int8_float16), `download_root` (null = Standard-HF-Cache `~\.cache\huggingface\hub`, optionaler Pfad, seit PR #2) |
+| `transcription` | `dictation_language` (de), `beam_size` (3), `batch_size` (8, optional, seit 14.09.2026, 0/1 = sequenziell), `vad_filter` (true), `initial_prompt`, `no_speech_threshold` (null, bei Deutsch unzuverlaessig!), `short_text_max_words` (3), `debug_transcription` (true) |
+| `post_processing` | `apply_spoken_punctuation` (true), `spoken_punctuation`, `word_corrections` (ß→ss, TryoTrix-Fixes), `hallucination_phrases` (immer verworfen), optional seit 14.09.2026: `hallucination_patterns` (Regex, immer verworfen, faengt «Untertitelung des ZDF, 2020» / «Untertitelung. BR 2018»), `hallucination_phrases_low_confidence` + `hallucination_logprob_threshold` (-1.0): Alltagsphrasen wie «vielen dank» fliegen nur raus, wenn `avg_logprob` des Segments unter dem Schwellwert liegt. Vorher wurde ein echtes «Vielen Dank.» am Diktat-Ende jedes Mal geloescht (12 Faelle im Log) |
 
 Ueberholt seit PR #1: Die frueheren Script-Konstanten (`MODEL_SIZE`, `INITIAL_PROMPT`, `SPOKEN_PUNCTUATION`, `WORD_CORRECTIONS`, `NO_SPEECH_THRESHOLD`, `DEBUG_TRANSCRIPTION`, `SHORT_TEXT_MAX_WORDS`, `HALLUCINATION_PHRASES`) existieren nicht mehr im Code, alles lebt in der JSON-Config.
 
@@ -71,8 +74,9 @@ Ueberholt seit PR #1: Die frueheren Script-Konstanten (`MODEL_SIZE`, `INITIAL_PR
 
 ### Debug-Logging
 Bei `DEBUG_TRANSCRIPTION = True` wird jedes Whisper-Segment mit Status ins History-Log geschrieben:
-- `KEEP (no_speech=0.12): Text` = Segment wurde uebernommen (no_speech-Wert nur informativ)
-- `SKIP (hallucination): Text` = Bekannte Halluzination gefiltert
+- `KEEP (no_speech=0.12, logprob=-0.30): Text` = Segment wurde uebernommen (no_speech-Wert nur informativ, logprob = Whisper-Konfidenz)
+- `SKIP (hallucination, logprob=-0.90): Text` = Bekannte Halluzination gefiltert (Phrasenliste oder Regex)
+- `SKIP (low-confidence phrase, logprob=-1.60): Text` = Alltagsphrase (z.B. «Vielen Dank.») verworfen, weil Whisper unsicher war
 - Hinweis: `no_speech_prob` wird nur geloggt, nicht zum Filtern verwendet (bei Deutsch unzuverlaessig)
 
 ### Trailing Period
@@ -133,7 +137,8 @@ Das Script findet die NVIDIA DLLs (cublas, cudnn) seit PR #1 dynamisch via `sysc
 | Modell | Ergebnis | Empfehlung |
 |--------|----------|------------|
 | `large-v3` + float16 + beam_size=5 | Beste Qualitaet, auch mit Hintergrundmusik. Langsamer (~12-16s fuer 5 Saetze) | Maximale Qualitaet, aber zu langsam fuer taeglichen Einsatz |
-| `large-v3-turbo` + int8_float16 + beam_size=3 | Gute Qualitaet, deutlich schneller (~3-5s). Transkription und Speed passen beide gut | **Aktuell aktiv** - bester Kompromiss aus Speed und Qualitaet |
+| `large-v3-turbo` + int8_float16 + beam_size=3 | Gute Qualitaet, deutlich schneller (~3-5s). Transkription und Speed passen beide gut | Aktiv vom 06.03. bis 14.09.2026 |
+| `large-v3-turbo` + float16 + beam_size=3 + batch_size=8 | Gleiche Qualitaet wie int8_float16 auf TTS-Testaudio (WER 0-2%), 10-25% schneller pro Chunk, plus 2-3x auf langen Diktaten durch Batched Decoding (14.09.2026) | **Aktuell aktiv** |
 | `distil-large-v3` | Hat Deutsch als Englisch transkribiert, selbst mit `language="de"`. Unbrauchbar fuer Deutsch | Nicht verwenden |
 | `TheChola/whisper-large-v3-turbo-german-faster-whisper` | Gated Repo auf HuggingFace, braucht Account + Token. 2.6% WER auf Deutsch. Nicht getestet | Bei Bedarf mit HF-Login testen |
 
@@ -190,6 +195,21 @@ Das Script findet die NVIDIA DLLs (cublas, cudnn) seit PR #1 dynamisch via `sysc
 | Fill-Disc hinter Electric Rings | Gefuellter roter Kreis (200,42,42, Blur 8) fuellt Gap zwischen Mic und Ring |
 | Mic-Icon r_outer 384→400, border_r +6→+1 | Roter Kreis fuellt Icon komplett, Ring sitzt direkt am Rand |
 | no_speech_prob Filterung deaktiviert | Keine verlorenen Segmente mehr (Whisper markierte klare Sprache mit 0.97) |
+| Asynchrone Beeps aus Temp-WAVs (14.09.2026) | Hotkey-Thread blockiert nicht mehr ~300 ms pro Beep (Regression aus PR #1); Stop-Beep verzoegert die Transkription nicht mehr |
+| Vorbereiteter Mikrofon-Stream (14.09.2026) | Aufnahme laeuft ~150 ms nach dem Hotkey statt nach 0.6-1.1 s; weniger abgeschnittene erste Woerter |
+| Modell-Warm-up beim Start (14.09.2026) | Erstes Diktat pro Session nicht mehr ~1 s langsamer (Log vorher: Median 5.6x statt 13.5x Echtzeit beim ersten Diktat) |
+| `BatchedInferencePipeline` + float16 (14.09.2026) | 30 s Audio 2.0 s → 0.8-1.3 s, 105 s Audio 7.0 s → 1.9 s, gleiche WER |
+
+### Gemessene Performance (14.09.2026, float16 + batch 8, Harness mit TTS-Audio, frischer Prozess)
+
+| Szenario | Audio | Transkription | Echtzeit-Faktor |
+|----------|-------|---------------|-----------------|
+| Modell laden (Cache) + Warm-up | - | 4.3s + 1.1s | - |
+| Kurzes Diktat (12 Woerter) | 5.5s | 0.4s | 14x |
+| Langes Diktat (75 Woerter) | 30s | 0.8-1.3s | 24-37x |
+| Sehr langes Diktat (270 Woerter) | 105s | 1.9s | 55x |
+
+Log-Statistik vor der Aenderung (1837 `[PERF]`-Zeilen, Feb-Sep 2026): Median 10-14x Echtzeit, Diktate 40-90 s brauchten 3-4 s, ab 90 s 6-9 s (p90 18-20 s). Der PR-#1-Merge selbst hat die Transkription NICHT verlangsamt (identischer `model.transcribe`-Aufruf und Parameter); das Gefuehl «langsamer» kam von den blockierenden Beeps plus 0.3-0.8 s Stream-Erzeugung vor jeder Aufnahme. Auswertung: `.planning/whisper-perf-2026-09-14/report.md` (lokal, nicht im Repo).
 
 ### Gemessene Performance (22.02.2026)
 
@@ -257,6 +277,7 @@ python whisper-transcribe.py "pfad/zur/audiodatei.mp3" [sprache]
 - **gh CLI:** Nicht installiert. PR-Review seit 21.08.2026 ueber den Skill `/pr-review N` (`.claude/skills/pr-review/`): `pr-scan.py` fetcht den PR-Head nach `pr-N` (nie Checkout, nichts wird ausgefuehrt) und scannt Metadaten, Links, versteckte Unicode-Zeichen, gefaehrliche Code-Muster und Prompt-Injection-Phrasen; `SKILL.md` enthaelt Checkliste, Urteilsregeln und den Ablauf Merge (temporaerer Worktree im Scratchpad) → deutsch-Sync → Neustart → Test. Ohne Go des Users kein Merge, kein Push, kein Kommentar
 - **PR #1 (GEMERGED 14.08.2026 als df7f5db):** Externer Contributor "Vousk-prod" (Fork `vousk/whisper-type`), 23 Commits, +1250/-686: EN-Uebersetzung aller Docs/UI/Logs, whisper-config.json als einzige Config-Quelle (versioniert), venv-basierte Installation, uninstall.bat, Silence-Auto-Stop, Log-Rotation, Beep-Lautstaerke, Privacy-Mode. Security-Review vor dem Merge (kompletter Diff + Unicode-/Pattern-Scans): sauber, keine Malware/Exfiltration/Prompt-Injection, Loeschaktionen gezielt + mit Y/N-Abfrage. Der fehlerhafte Punkt-Regex aus der PR-Config wurde direkt nach dem Merge auf master entfernt (4b2b584)
 - **PR #2 (GEMERGED 21.08.2026 als 91bcec2):** Externer Contributor tkhyn (Thomas Khyn, Fork `tkhyn/whisper-type`), 1 Zeile: optionales `model.download_root` an `WhisperModel` durchreichen. Security-Review (Scan + Diff + faster-whisper-Quellcode): sauber, keine Links, keine Injection. Bug im Original (`str(None)` = `"None"` als cache_dir → Modell-Neudownload in Ordner `None` fuer alle ohne den Key) im Folge-Commit bc63547 gefixt: Key optional, null/fehlend = Standard-Cache, Pfad wird per expanduser aufgeloest. Config-Key `download_root: null` + README-Zeile ergaenzt
+- **Performance-Update 14.09.2026 (master 5ed9e22 + a313938, deutsch per Merge synchron):** Ausloeser war Danis Eindruck, Whisper sei seit den PR-Merges langsamer. Befund: Transkription unveraendert, aber PR #1 machte beide Beeps blockierend (~300 ms statt ~105 ms) und die Stream-Erzeugung (0.3-0.8 s) lag ohnehin vor jeder Aufnahme. Fix: asynchrone Beeps, vorbereiteter Mikrofon-Stream, Warm-up, `BatchedInferencePipeline` (batch 8) + float16, zweistufiger Halluzinations-Filter («Vielen Dank.» bleibt). Details in den Abschnitten Funktionsweise und Performance-Optimierungen
 
 ---
 
@@ -284,7 +305,7 @@ Upstream-Updates einspielen:
 ## Ideen fuer die Zukunft
 
 - ~~SPOKEN_PUNCTUATION in Config auslagern~~ Erledigt durch PR #1 (14.08.2026)
-- **whisper-transcribe.py updaten:** Gleiche Settings wie whisper-dictate (vad_filter, Halluzinations-Filter, no_speech deaktiviert)
+- **whisper-transcribe.py updaten:** Gleiche Settings wie whisper-dictate (vad_filter, Halluzinations-Filter, no_speech deaktiviert, Batched Pipeline)
 - **Auto-Reconnect Keyboard-Hook:** Watchdog-Thread der erkennt wenn der Hook nach ~3h/Sleep verloren geht und automatisch neu registriert
 - **Sprache umschaltbar:** Per Tray-Menue zwischen Deutsch/Englisch wechseln, oder zweiter Hotkey (z.B. CTRL+ALT+E fuer Englisch)
 

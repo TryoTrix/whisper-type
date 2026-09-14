@@ -13,6 +13,7 @@ import sys
 import os
 import io
 import wave
+import tempfile
 import ctypes
 from ctypes import wintypes
 
@@ -67,7 +68,12 @@ audio_overflow_count = 0
 audio_level = 0.0  # RMS level 0.0-1.0, updated in audio_callback
 last_audio_activity = 0.0
 model = None
+batched_model = None  # faster-whisper BatchedInferencePipeline (VAD-chunked parallel decoding)
 stream = None
+prepared_stream = None  # Microphone stream created ahead of time so the hotkey starts it in ~1 ms
+_stream_lock = threading.Lock()
+capture_start_time = 0.0  # Audio arriving before this monotonic time is dropped (start beep)
+_sound_cache = {}  # (name, volume) -> temp WAV path for asynchronous playback
 target_window = None
 tray_icon = None
 calm_mode = False  # True = static mic icon instead of Electric Border
@@ -182,70 +188,136 @@ def hotkey_display_text():
     return str(CONFIG["hotkeys"]["dictation"]).upper()
 
 
+BEEP_DURATION_MS = 100  # Start/stop beep length; audio captured during the start beep is dropped
+
+
 def play_start_sound():
-    """Short high beep = recording started."""
-    play_tone(800, 100)
+    """Short high beep = recording started. Asynchronous, so the microphone starts immediately."""
+    play_named_sound("start", lambda: make_tone(800, BEEP_DURATION_MS), base_volume=0.5)
 
 
 def play_stop_sound():
-    """Short low beep = recording stopped."""
-    play_tone(500, 100)
+    """Short low beep = recording stopped. Asynchronous, so transcription starts immediately."""
+    play_named_sound("stop", lambda: make_tone(500, BEEP_DURATION_MS), base_volume=0.5)
 
 
-def play_tone(frequency, duration_ms):
-    """Play a short configurable-volume tone."""
-    try:
-        sr = 44100
-        duration = duration_ms / 1000
-        t = np.linspace(0, duration, int(sr * duration), False)
-        tone = np.sin(2 * np.pi * frequency * t)
-        fade_len = min(int(sr * 0.005), len(tone) // 2)
-        if fade_len > 0:
-            tone[:fade_len] *= np.linspace(0, 1, fade_len)
-            tone[-fade_len:] *= np.linspace(1, 0, fade_len)
-        play_waveform(tone, sr, base_volume=0.5)
-    except Exception:
-        pass  # Sound is nice-to-have, never crash on issues
+def play_ready_sound():
+    """Soft ready chime after model load (startup only)."""
+    play_named_sound("ready", make_ready_chime, base_volume=0.3)
 
 
-def play_waveform(samples, sample_rate=44100, base_volume=1.0):
-    """Play mono samples through Windows with config-controlled amplitude."""
-    volume = float(CONFIG["audio"]["beep_volume"])
-    if volume <= 0:
-        return
-    volume = min(volume, 1.0) * base_volume
+def make_tone(frequency, duration_ms):
+    """Sine tone with 5 ms fades; returns (samples, sample_rate)."""
+    sr = 44100
+    duration = duration_ms / 1000
+    t = np.linspace(0, duration, int(sr * duration), False)
+    tone = np.sin(2 * np.pi * frequency * t)
+    fade_len = min(int(sr * 0.005), len(tone) // 2)
+    if fade_len > 0:
+        tone[:fade_len] *= np.linspace(0, 1, fade_len)
+        tone[-fade_len:] *= np.linspace(1, 0, fade_len)
+    return tone, sr
+
+
+def make_ready_chime():
+    """Two ascending notes G5 -> C6 (soft "ding-ding"); returns (samples, sample_rate)."""
+    sr = 44100
+    t1 = np.linspace(0, 0.12, int(sr * 0.12), False)
+    t2 = np.linspace(0, 0.25, int(sr * 0.25), False)
+    note1 = np.sin(2 * np.pi * 784 * t1) * np.exp(-t1 * 12)  # G5, short
+    note2 = np.sin(2 * np.pi * 1047 * t2) * np.exp(-t2 * 6)  # C6, lingering tail
+    gap = np.zeros(int(sr * 0.04))  # 40ms pause
+    return np.concatenate([note1, gap, note2]), sr
+
+
+def render_wav_bytes(samples, sample_rate, volume):
+    """Mono 16-bit WAV bytes with the given amplitude (0.0-1.0)."""
     pcm = np.clip(samples * volume, -1.0, 1.0)
     pcm = (pcm * 32767).astype(np.int16)
-
     with io.BytesIO() as buffer:
         with wave.open(buffer, "wb") as wav:
             wav.setnchannels(1)
             wav.setsampwidth(2)
             wav.setframerate(sample_rate)
             wav.writeframes(pcm.tobytes())
-        winsound.PlaySound(buffer.getvalue(), winsound.SND_MEMORY)
+        return buffer.getvalue()
 
 
-def play_ready_sound():
-    """Soft ready chime after model load (startup only)."""
+def sound_volume(base_volume):
+    """Effective amplitude from audio.beep_volume, or 0.0 when muted."""
+    volume = float(CONFIG["audio"]["beep_volume"])
+    if volume <= 0:
+        return 0.0
+    return min(volume, 1.0) * base_volume
+
+
+def prepare_sound(name, generator, base_volume):
+    """Render a sound to a temp WAV file once (asynchronous PlaySound needs a file, not memory)."""
+    volume = sound_volume(base_volume)
+    if volume <= 0:
+        return None
+    key = (name, round(volume, 4))
+    path = _sound_cache.get(key)
+    if path and os.path.exists(path):
+        return path
+    samples, sr = generator()
+    path = os.path.join(tempfile.gettempdir(), f"whisper-type-{name}.wav")
+    with open(path, "wb") as f:
+        f.write(render_wav_bytes(samples, sr, volume))
+    _sound_cache[key] = path
+    return path
+
+
+def prepare_sounds():
+    """Pre-render start/stop/ready sounds at startup so the first beep does no file I/O."""
+    for name, generator, base_volume in (
+        ("start", lambda: make_tone(800, BEEP_DURATION_MS), 0.5),
+        ("stop", lambda: make_tone(500, BEEP_DURATION_MS), 0.5),
+        ("ready", make_ready_chime, 0.3),
+    ):
+        try:
+            prepare_sound(name, generator, base_volume)
+        except Exception:
+            pass
+
+
+def play_named_sound(name, generator, base_volume):
+    """Play a sound without blocking the caller.
+
+    In-memory PlaySound (SND_MEMORY) cannot play asynchronously and blocked the hotkey
+    thread for ~300 ms per beep, so sounds are played from a pre-rendered temp file.
+    Falls back to blocking in-memory playback if the temp file cannot be written.
+    """
     try:
-        sr = 44100
-        # Two ascending notes: G5 -> C6 (soft "ding-ding")
-        t1 = np.linspace(0, 0.12, int(sr * 0.12), False)
-        t2 = np.linspace(0, 0.25, int(sr * 0.25), False)
-        note1 = np.sin(2 * np.pi * 784 * t1) * np.exp(-t1 * 12)  # G5, short
-        note2 = np.sin(2 * np.pi * 1047 * t2) * np.exp(-t2 * 6)  # C6, lingering tail
-        gap = np.zeros(int(sr * 0.04))  # 40ms pause
-        chime = np.concatenate([note1, gap, note2])
-        play_waveform(chime, sr, base_volume=0.3)
+        path = prepare_sound(name, generator, base_volume)
+        if path is None:
+            return  # muted via audio.beep_volume
+        winsound.PlaySound(path, winsound.SND_FILENAME | winsound.SND_ASYNC | winsound.SND_NODEFAULT)
     except Exception:
-        pass  # Sound is nice-to-have, never crash on issues
+        try:
+            volume = sound_volume(base_volume)
+            if volume > 0:
+                samples, sr = generator()
+                winsound.PlaySound(render_wav_bytes(samples, sr, volume), winsound.SND_MEMORY)
+        except Exception:
+            pass  # Sound is nice-to-have, never crash on issues
 
 
 def filter_hallucinations(segments):
-    """Filter Whisper hallucinations (silence phantoms and known phrases)."""
+    """Filter Whisper hallucinations (silence phantoms and known phrases).
+
+    `post_processing.hallucination_phrases` (exact match) and `hallucination_patterns`
+    (regex) are always discarded. `hallucination_phrases_low_confidence` such as
+    "vielen dank" are only discarded when Whisper itself was unsure, i.e. the segment's
+    avg_logprob is below `hallucination_logprob_threshold`. A real "Vielen Dank." at the
+    end of a dictation has a high log probability and is kept.
+    """
     transcription_config = CONFIG["transcription"]
-    hallucination_phrases = set(CONFIG["post_processing"]["hallucination_phrases"])
+    post_config = CONFIG["post_processing"]
+    hallucination_phrases = set(post_config["hallucination_phrases"])
+    low_confidence_phrases = set(post_config.get("hallucination_phrases_low_confidence", []))
+    logprob_threshold = float(post_config.get("hallucination_logprob_threshold", -1.0))
+    patterns = [re.compile(p, re.IGNORECASE) for p in post_config.get("hallucination_patterns", [])]
     debug_transcription = bool(transcription_config["debug_transcription"])
     no_speech_threshold = transcription_config["no_speech_threshold"]
     filtered = []
@@ -253,6 +325,7 @@ def filter_hallucinations(segments):
     for seg in segments:
         text = seg.text.strip()
         no_speech = getattr(seg, "no_speech_prob", 0.0)
+        avg_logprob = getattr(seg, "avg_logprob", 0.0)
         # no_speech_prob filtering disabled: in German, Whisper often returns 0.97
         # for clearly spoken sentences. vad_filter=True already performs audio VAD.
         if no_speech_threshold is not None and no_speech > no_speech_threshold:
@@ -263,12 +336,16 @@ def filter_hallucinations(segments):
             continue
         # Check known hallucinations
         text_lower = text.lower().rstrip(".!?,;:")
-        if text_lower in hallucination_phrases:
+        if text_lower in hallucination_phrases or any(p.search(text) for p in patterns):
             if debug_transcription:
-                debug_lines.append(f"  SKIP (hallucination): {text}")
+                debug_lines.append(f"  SKIP (hallucination, logprob={avg_logprob:.2f}): {text}")
+            continue
+        if text_lower in low_confidence_phrases and avg_logprob < logprob_threshold:
+            if debug_transcription:
+                debug_lines.append(f"  SKIP (low-confidence phrase, logprob={avg_logprob:.2f}): {text}")
             continue
         if debug_transcription:
-            debug_lines.append(f"  KEEP (no_speech={no_speech:.2f}): {text}")
+            debug_lines.append(f"  KEEP (no_speech={no_speech:.2f}, logprob={avg_logprob:.2f}): {text}")
         filtered.append(text)
     # Write debug info to log
     if debug_transcription and debug_lines:
@@ -380,6 +457,17 @@ def _validate_config(config):
     max_file_size_mb = float(config["logging"]["max_file_size_mb"])
     if max_file_size_mb <= 0:
         raise RuntimeError("Config value logging.max_file_size_mb must be greater than 0")
+
+    # Optional keys (defaults apply when missing)
+    batch_size = int(config["transcription"].get("batch_size", 8))
+    if batch_size < 0:
+        raise RuntimeError("Config value transcription.batch_size must be at least 0")
+
+    for pattern in config["post_processing"].get("hallucination_patterns", []):
+        try:
+            re.compile(pattern)
+        except re.error as exc:
+            raise RuntimeError(f"Invalid regex in post_processing.hallucination_patterns: {pattern} ({exc})") from exc
 
 
 def load_config():
@@ -1309,9 +1397,50 @@ class RecordingOverlay:
             on_quit(tray_icon, None)
 
 
+def create_batched_pipeline(whisper_model):
+    """VAD-chunked parallel decoding (faster-whisper >= 1.1); None means sequential decoding."""
+    if int(CONFIG["transcription"].get("batch_size", 8)) <= 1:
+        return None
+    try:
+        from faster_whisper import BatchedInferencePipeline
+        return BatchedInferencePipeline(whisper_model)
+    except Exception as exc:
+        append_to_history(f"[STARTUP] Batched pipeline unavailable, using sequential decoding: {exc}")
+        return None
+
+
+def warmup_model(whisper_model, batched_pipeline):
+    """Transcribe two seconds of silence once so CUDA kernels are ready before the first dictation.
+
+    Without this, the first dictation after every start took about one second longer.
+    """
+    try:
+        transcription_config = CONFIG["transcription"]
+        silence = np.zeros(int(CONFIG["audio"]["sample_rate"]) * 2, dtype=np.float32)
+        common = dict(
+            language=transcription_config["dictation_language"],
+            beam_size=int(transcription_config["beam_size"]),
+            vad_filter=False,
+            temperature=0.0,
+            without_timestamps=True,
+        )
+        if batched_pipeline is not None:
+            segments, _ = batched_pipeline.transcribe(
+                silence,
+                batch_size=2,
+                clip_timestamps=[{"start": 0, "end": 1}, {"start": 1, "end": 2}],
+                **common,
+            )
+        else:
+            segments, _ = whisper_model.transcribe(silence, **common)
+        list(segments)
+    except Exception as exc:
+        append_to_history(f"[STARTUP] Warm-up skipped: {exc}")
+
+
 def load_model():
-    """Load Whisper model at startup."""
-    global model
+    """Load Whisper model at startup, warm it up and prepare sounds and microphone."""
+    global model, batched_model
     import traceback
     try:
         from faster_whisper import WhisperModel
@@ -1321,14 +1450,23 @@ def load_model():
         download_root = model_config.get("download_root")
         download_root = os.path.expanduser(str(download_root)) if download_root else None
         t0 = time.time()
-        model = WhisperModel(
+        loaded_model = WhisperModel(
             str(model_config["size"]),
             download_root=download_root,
             device=str(model_config["device"]),
             compute_type=str(model_config["compute_type"]),
         )
         load_time = time.time() - t0
-        append_to_history(f"[STARTUP] Model loaded in {load_time:.1f}s")
+        batched_pipeline = create_batched_pipeline(loaded_model)
+        t0 = time.time()
+        warmup_model(loaded_model, batched_pipeline)
+        warmup_time = time.time() - t0
+        # Publish the model only now: hotkey_loop starts listening once model is set
+        batched_model = batched_pipeline
+        model = loaded_model
+        append_to_history(f"[STARTUP] Model loaded in {load_time:.1f}s (warm-up {warmup_time:.1f}s)")
+        prepare_sounds()
+        prepare_input_stream()
         update_tray(f"Bereit ({hotkey_display_text()})", create_icon_idle())
         play_ready_sound()
     except Exception:
@@ -1339,13 +1477,70 @@ def load_model():
         update_tray("FEHLER - siehe whisper-error.log", create_icon_loading())
 
 
+def create_input_stream():
+    """Create (not start) a microphone stream. Creation is the slow part (0.3-0.8 s on MME)."""
+    return sd.InputStream(
+        samplerate=int(CONFIG["audio"]["sample_rate"]),
+        channels=1,
+        dtype="float32",
+        callback=audio_callback,
+        blocksize=1024,
+        latency="high",
+    )
+
+
+def close_stream_quietly(audio_stream):
+    if audio_stream is None:
+        return
+    try:
+        audio_stream.close()
+    except Exception:
+        pass
+
+
+def prepare_input_stream():
+    """Create the next microphone stream ahead of time so the hotkey can start it in ~1 ms.
+
+    A created-but-stopped stream does not count as microphone use for Windows, so the
+    privacy indicator only lights up while a dictation is actually recording. The stream
+    is recreated after every dictation, which also picks up a changed default microphone.
+    """
+    global prepared_stream
+    try:
+        new_stream = create_input_stream()
+    except Exception as exc:
+        append_to_history(f"[ERROR] Could not prepare microphone stream: {exc}")
+        return
+    with _stream_lock:
+        old_stream = prepared_stream
+        prepared_stream = new_stream
+    close_stream_quietly(old_stream)
+
+
+def take_prepared_stream():
+    """Hand the prepared stream to the caller (or None when none is ready yet)."""
+    global prepared_stream
+    with _stream_lock:
+        ready_stream = prepared_stream
+        prepared_stream = None
+    return ready_stream
+
+
+def release_input_stream(used_stream):
+    """Close the finished stream and prepare the next one, off the critical path."""
+    def _worker():
+        close_stream_quietly(used_stream)
+        prepare_input_stream()
+    threading.Thread(target=_worker, daemon=True).start()
+
+
 def audio_callback(indata, frames, time_info, status):
     """Called during recording."""
     global audio_overflow_count, audio_level, last_audio_activity
     if status:
         # Input overflow = audio data was lost (buffer too small)
         audio_overflow_count += 1
-    if recording:
+    if recording and time.monotonic() >= capture_start_time:
         audio_chunks.append(indata.copy())
         # Compute RMS level for orb animation (0.0-1.0)
         rms = float(np.sqrt(np.mean(indata**2)))
@@ -1355,30 +1550,40 @@ def audio_callback(indata, frames, time_info, status):
 
 
 def start_recording():
-    """Start recording."""
-    global recording, audio_chunks, audio_overflow_count, last_audio_activity, stream, target_window
+    """Start recording: beep asynchronously and start the prepared microphone stream."""
+    global recording, audio_chunks, audio_overflow_count, last_audio_activity
+    global stream, target_window, capture_start_time
     if recording:
         return
 
     target_window = user32.GetForegroundWindow()
 
-    # Play sound BEFORE recording (so beep is not recorded)
-    play_start_sound()
-
     audio_chunks = []
     audio_overflow_count = 0
     last_audio_activity = time.monotonic()
-    recording = True
-    stream = sd.InputStream(
-        samplerate=int(CONFIG["audio"]["sample_rate"]),
-        channels=1,
-        dtype="float32",
-        callback=audio_callback,
-        blocksize=1024,
-        latency="high",
-    )
-    stream.start()
 
+    # The beep plays in the background; audio captured while it sounds is dropped in audio_callback
+    play_start_sound()
+    capture_start_time = time.monotonic() + BEEP_DURATION_MS / 1000 + 0.03
+
+    new_stream = take_prepared_stream()
+    try:
+        if new_stream is None:
+            new_stream = create_input_stream()
+        new_stream.start()
+    except Exception:
+        # The default microphone may have changed or vanished: retry once with a fresh stream
+        close_stream_quietly(new_stream)
+        try:
+            new_stream = create_input_stream()
+            new_stream.start()
+        except Exception as exc:
+            append_to_history(f"[ERROR] Microphone not available: {exc}")
+            update_tray("Mikrofon-Fehler - siehe whisper-history.log", create_icon_idle())
+            return
+
+    stream = new_stream
+    recording = True
     update_tray("Aufnahme...", create_icon_recording())
 
     silence_timeout = float(CONFIG["audio"]["silence_timeout_seconds"])
@@ -1409,11 +1614,14 @@ def stop_recording_and_transcribe():
     audio_level = 0.0
 
     if stream:
-        stream.stop()
-        stream.close()
+        try:
+            stream.stop()
+        except Exception:
+            pass
+        release_input_stream(stream)  # close + prepare the next stream in the background
         stream = None
 
-    # Play sound AFTER stopping (recording already ended)
+    # Stop beep plays in the background, transcription starts right away
     play_stop_sound()
 
     update_tray("Transkribiere...", create_icon_loading())
@@ -1444,15 +1652,22 @@ def stop_recording_and_transcribe():
 
     try:
         transcription_config = CONFIG["transcription"]
-        t_start = time.time()
-        segments, info = model.transcribe(
-            audio,
+        batch_size = int(transcription_config.get("batch_size", 8))
+        vad_filter = bool(transcription_config["vad_filter"])
+        use_batched = batched_model is not None and batch_size > 1 and vad_filter
+        transcribe_options = dict(
             language=transcription_config["dictation_language"],
             beam_size=int(transcription_config["beam_size"]),
-            vad_filter=bool(transcription_config["vad_filter"]),
+            vad_filter=vad_filter,
             condition_on_previous_text=bool(transcription_config["condition_on_previous_text"]),
             initial_prompt=str(transcription_config["initial_prompt"]),
         )
+        t_start = time.time()
+        if use_batched:
+            # VAD-chunked parallel decoding: 1.5-2.7x faster than sequential decoding, same quality
+            segments, info = batched_model.transcribe(audio, batch_size=batch_size, **transcribe_options)
+        else:
+            segments, info = model.transcribe(audio, **transcribe_options)
 
         # Fully consume generator (prevents data loss on iteration errors)
         segments_list = list(segments)
@@ -1467,7 +1682,8 @@ def stop_recording_and_transcribe():
 
         # Performance log
         ratio = duration / t_transcribe if t_transcribe > 0 else 0
-        append_to_history(f"[PERF] {duration:.1f}s audio -> {t_transcribe:.1f}s transcription ({ratio:.1f}x real-time)")
+        mode = f", batch {batch_size}" if use_batched else ""
+        append_to_history(f"[PERF] {duration:.1f}s audio -> {t_transcribe:.1f}s transcription ({ratio:.1f}x real-time{mode})")
 
         if not text:
             audio_rms = float(np.sqrt(np.mean(audio ** 2))) if len(audio) > 0 else 0.0

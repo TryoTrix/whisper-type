@@ -166,10 +166,11 @@ All user-editable settings live in `whisper-config.json`. It is standard JSON, s
 | `audio.silence_timeout_seconds` | Stop recording after this many seconds of continuous silence; `0` disables automatic stopping | `20` |
 | `model.size` | Whisper model | `large-v3-turbo` |
 | `model.device` | Faster Whisper device | `cuda` |
-| `model.compute_type` | Faster Whisper compute type | `int8_float16` |
+| `model.compute_type` | Faster Whisper compute type. On RTX 30/40 GPUs `float16` is both faster and more accurate than `int8_float16` (measured on RTX 4060, 2026-09) | `float16` |
 | `model.download_root` | Optional folder for the Hugging Face model cache (useful when several apps share the same models). `null` keeps the default `~/.cache/huggingface/hub`. Use forward slashes on Windows, e.g. `D:/models` | `null` |
 | `transcription.dictation_language` | Language code passed to `model.transcribe()` | `de` |
 | `transcription.beam_size` | Whisper beam search size | `3` |
+| `transcription.batch_size` | Optional. Number of VAD speech chunks decoded in parallel with faster-whisper's `BatchedInferencePipeline` (1.5-2.7x faster on dictations longer than ~15 s, same accuracy). `0` or `1` selects sequential decoding; requires `transcription.vad_filter` | `8` |
 | `transcription.vad_filter` | Enable faster-whisper VAD | `true` |
 | `transcription.condition_on_previous_text` | Reuse previous text as context | `false` |
 | `transcription.initial_prompt` | Domain-specific terms for better recognition | Comma-separated list |
@@ -180,30 +181,35 @@ All user-editable settings live in `whisper-config.json`. It is standard JSON, s
 | `post_processing.spoken_punctuation` | Ordered regex mapping from spoken terms to characters. The supplied mapping uses German terms and is applied case-insensitively. | See table above |
 | `post_processing.word_corrections` | Ordered, case-insensitive regex replacements applied after spoken punctuation processing. | Regex mapping |
 | `post_processing.hallucination_phrases` | Phrase list to discard when a full returned segment matches after case-folding and removing final punctuation. | Phrase list |
+| `post_processing.hallucination_phrases_low_confidence` | Optional. Phrases such as `vielen dank` that people also say for real. A matching segment is only discarded when Whisper was unsure about it (`avg_logprob` below `hallucination_logprob_threshold`); a confident "Vielen Dank." at the end of a dictation is kept. | `["vielen dank", "danke", "tschüss", "bis zum nächsten mal"]` |
+| `post_processing.hallucination_logprob_threshold` | Optional. Log-probability limit for the low-confidence phrase list. Whisper's own hallucination fallback uses the same `-1.0`. | `-1.0` |
+| `post_processing.hallucination_patterns` | Optional. Case-insensitive regexes; a returned segment matching any of them is discarded. The default catches subtitle credits such as "Untertitelung des ZDF, 2020" or "Untertitelung. BR 2018". | One regex |
 
 To switch the language, change `transcription.dictation_language` to your language code, for example `"en"` for English. Adapt `transcription.initial_prompt`, `post_processing.spoken_punctuation`, and `post_processing.hallucination_phrases` when they contain language-specific terms.
 
 ## Speed & Accuracy
 
-The supplied configuration uses Whisper `large-v3-turbo` with CUDA `int8_float16` precision and `beam_size=3`, chosen for fast local dictation with good accuracy. For more precise transcriptions, or for better support for certain languages, you can select the full Whisper `large-v3` model in `model.size` and use a suitable compute type such as `float16`. `large-v3` is substantially heavier than `large-v3-turbo`: it requires more VRAM and a capable NVIDIA GPU, takes longer to load, and increases transcription time. Increase `transcription.beam_size` only after considering the additional latency and GPU memory use.
+The supplied configuration uses Whisper `large-v3-turbo` with CUDA `float16` precision, `beam_size=3` and batched decoding (`transcription.batch_size=8`), chosen for fast local dictation with good accuracy. Batched decoding splits the recording at speech pauses (VAD) and decodes the chunks in parallel, which makes long dictations 2-3x faster without changing the result. On an RTX 4060, `float16` measured 10-25% faster than `int8_float16` and loads faster because no quantization happens at start. For more precise transcriptions, or for better support for certain languages, you can select the full Whisper `large-v3` model in `model.size` and use a suitable compute type such as `float16`. `large-v3` is substantially heavier than `large-v3-turbo`: it requires more VRAM and a capable NVIDIA GPU, takes longer to load, and increases transcription time. Increase `transcription.beam_size` only after considering the additional latency and GPU memory use.
 
-Benchmarks on RTX 4060:
+Benchmarks on RTX 4060 (laptop), `float16` + `batch_size=8`, September 2026:
 
 | Scenario | Audio duration | Transcription time | Real-time factor |
 |----------|----------------|-------------------|-----------------|
-| Short dictation (1-3 words) | 2-4s | ~0.5s | 4-6x |
-| Medium dictation (1-2 sentences) | 4-10s | ~1s | 5-10x |
-| Long dictation (6 sentences) | ~55s | ~5s | 11x |
-| Very long dictation (20 segments) | 73s | 7.7s | 9.5x |
+| Short dictation (1-3 words) | 2-3s | ~0.3s | 5-9x |
+| Medium dictation (1-2 sentences) | 5-10s | ~0.4s | 14x |
+| Long dictation (75 words) | 30s | 0.8-1.3s | 24-37x |
+| Very long dictation (270 words) | 105s | 1.9s | 55x |
+
+Before batched decoding (sequential, `int8_float16`), the same 30 s and 105 s recordings took 2.0 s and 7.0 s. The first dictation after a start is no longer slower either: the model is warmed up with two seconds of silence right after loading.
 
 Results depend on the microphone, language, background noise, selected model, and configuration.
 
 ## How It Works
 
-1. **Hotkey** triggers audio recording via `sounddevice`
+1. **Hotkey** starts a microphone stream that was created ahead of time via `sounddevice`, so capture begins within ~150 ms of the key press. The start beep plays asynchronously and audio captured while it sounds is dropped. Windows only reports the microphone as "in use" while a dictation is recording
 2. **Audio** is captured as a NumPy array at 16kHz (no WAV file intermediary)
-3. **Whisper** transcribes with `faster-whisper` (CTranslate2 backend) on your GPU
-4. **Post-processing** applies spoken punctuation replacement and hallucination filtering
+3. **Whisper** transcribes with `faster-whisper` (CTranslate2 backend) on your GPU. Speech chunks found by the VAD are decoded in parallel (`BatchedInferencePipeline`); the model is warmed up once at startup
+4. **Post-processing** applies spoken punctuation replacement and hallucination filtering (fixed phrases and regexes are always dropped, everyday phrases like "Vielen Dank" only when Whisper was unsure)
 5. **Output** is pasted into the active window via clipboard
 
 The recording overlay uses pre-rendered animation frames (90 frames, 30fps) with 2D pixel displacement simulating SVG feDisplacementMap. A dual-ring system (inner plasma ring + outer orbit ring) with independent noise fields creates the electric border effect. All blur layers are pre-composited before the frame loop for minimal CPU usage during recording.

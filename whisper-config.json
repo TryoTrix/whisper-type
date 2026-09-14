@@ -29,7 +29,7 @@
         "batch_size": 8,
         "vad_filter": true,
         "condition_on_previous_text": false,
-        "initial_prompt": "CLAUDE.md, Whisper, faster-whisper, Python, CUDA, RTX 4060, committe, pushe, Punkt, YOLO, TryoTrix, CMD, committen, pushen, Commit, Push",
+        "initial_prompt": "CLAUDE.md, Whisper, Tray, faster-whisper, Python, CUDA, RTX 4060, committe, pushe, Punkt, YOLO, TryoTrix, CMD, committen, pushen, Commit, Push",
         "no_speech_threshold": null,
         "debug_transcription": true,
         "short_text_max_words": 3

@@ -33,14 +33,17 @@
 ### How It Works
 - **Hotkey:** `CTRL+ALT+D` starts/stops recording (configured via `hotkeys.dictation` in `whisper-config.json`)
 - **Model:** `faster-whisper` large-v3-turbo, language: German by default (configured via `model.*` and `transcription.dictation_language` in `whisper-config.json`)
-- **GPU:** CUDA int8_float16 on RTX 4060 (~3 GB VRAM)
+- **GPU:** CUDA float16 on RTX 4060 (~2 GB VRAM). Switched from int8_float16 on 2026-09-14: float16 measured 10-25% faster on this GPU, loads faster (no quantization at start) and has no quantization loss
 - **Transcription:** `beam_size=3`, `vad_filter=True`, `condition_on_previous_text=False` by default, audio is passed directly to Whisper as a NumPy array (no WAV roundtrip). All transcription options live under `transcription` in `whisper-config.json`
+- **Batched decoding (since 2026-09-14):** `transcription.batch_size` (default 8, `0`/`1` = sequential) uses faster-whisper's `BatchedInferencePipeline`: the VAD splits the recording at pauses and the chunks are decoded in parallel. Measured on RTX 4060 with TTS audio: 30 s in 0.8-1.3 s instead of 2.0 s, 105 s in 1.9 s instead of 7.0 s, word error rate equal or better. Requires `vad_filter=true`; otherwise the sequential path is used. `[PERF]` lines end with `, batch 8` when the batched path was used
+- **Warm-up:** `load_model()` transcribes two seconds of silence (batched, 2 clips, no VAD) before publishing the model, so the first dictation after a start is no longer ~1 s slower. Logged as `[STARTUP] Model loaded in 4.3s (warm-up 1.1s)`
+- **Microphone stream (since 2026-09-14):** Creating an `sd.InputStream` costs 0.3-0.8 s on the MME host API, so a stream is created ahead of time (`prepare_input_stream()`, at startup and again in a background thread after every dictation) and only started on the hotkey (~1 ms, first audio after ~150 ms). A created-but-stopped stream does not count as microphone use for Windows (verified via `CapabilityAccessManager` timestamps), so the privacy indicator only lights while recording. Recreating the stream after each dictation also picks up a changed default microphone; if `start()` fails, a fresh stream is created once more before giving up with a tray message
 - **Initial prompt:** Domain terms Whisper should recognize correctly (e.g. CLAUDE.md). Configurable via `transcription.initial_prompt`, no performance impact
 - **Spoken punctuation:** Spoken punctuation is automatically replaced (e.g. "Doppelpunkt" -> `:`, "Fragezeichen" -> `?`, "Anfuehrungszeichen" -> `"`) when `post_processing.apply_spoken_punctuation` is enabled. Mappings are configurable in `post_processing.spoken_punctuation`
 - **Output:** Transcribed text is inserted into the active window via clipboard
 - **Tray icon colors:** Gray = model loading, Green = ready, Red = recording
 - **Tray tooltip stats:** Shows today's dictations and audio duration in the tooltip (e.g. "Today: 5x, 2.1 min"). Updates after each dictation by reading `whisper-history.log`
-- **Audio feedback:** High beep (800 Hz) on start, low beep (500 Hz) on stop, plus a ready chime after model load. All are generated as in-memory WAV sounds with `winsound.PlaySound`; volume is controlled by `audio.beep_volume` in `whisper-config.json` (`0.0` silent, `1.0` max)
+- **Audio feedback:** High beep (800 Hz) on start, low beep (500 Hz) on stop, plus a ready chime after model load. The sounds are rendered once into temp WAV files (`%TEMP%\whisper-type-*.wav`) and played with `winsound.PlaySound(SND_FILENAME | SND_ASYNC)`, i.e. without blocking: PR #1's in-memory `SND_MEMORY` playback cannot be asynchronous and blocked the hotkey thread ~300 ms per beep (measured; `winsound.Beep` before PR #1 blocked ~105 ms). Audio captured during the start beep (`BEEP_DURATION_MS` + 30 ms) is dropped in `audio_callback` so the beep is never transcribed. Volume via `audio.beep_volume` (`0.0` silent, `1.0` max); fallback to blocking in-memory playback if the temp file cannot be written
 - **REC overlay:** Red pulsing bar (8px) at top of all monitors during recording (tkinter, click-through). Microphone icon (100x100, 8x supersampling, r_outer=400 for gapless circle) with Electric Border Effect: 90 pre-rendered frames (3s loop, 30fps) using true 2D pixel displacement (simulating SVG feDisplacementMap). Dual-ring system: inner ring (White-hot Core + Sharp + 4 glow layers, border_r=mic_r+1) and outer orbit ring (separate noise field, slower pan). Fill disc (200,42,42, Blur 8) behind all rings fills the full area between mic icon and Electric Border. Noise textures (5 octaves, 520x520) pan circularly for organic turbulence. All blur layers are composited into 2 images BEFORE frame loop (only 2 displacement ops per frame instead of 6; no blur ops in loop). Visual effects: Breathing Pulse (glow intensity via sine), Core Flash (3 short brightness flashes per loop), dark-red compositing (semi-transparent edge pixels -> dark red instead of black). Pre-rendering runs parallel to model load (~5-8s). Fallback: static mic icon with fill disc until frames are ready. ~7 MB RAM for frame list
 - **History log:** Every successful transcription is stored with timestamp in `whisper-history.log` (`[2026-02-17 14:32:05] Text...`)
 
@@ -53,8 +56,8 @@
 | `hotkeys` | Dictation shortcut |
 | `audio` | Recording sample rate, beep volume, and `silence_timeout_seconds` (auto-stop after sustained silence; `0` disables it) |
 | `model` | Faster Whisper model size, device, compute type, and optional `download_root` (custom Hugging Face cache folder, `null` = default; since PR #2) |
-| `transcription` | Language, beam size, VAD, initial prompt, debug logging, short-text punctuation behavior |
-| `post_processing` | Spoken punctuation toggle/regexes, word corrections, and hallucination phrase filters |
+| `transcription` | Language, beam size, optional `batch_size` (batched decoding, default 8), VAD, initial prompt, debug logging, short-text punctuation behavior |
+| `post_processing` | Spoken punctuation toggle/regexes, word corrections, and hallucination filters: `hallucination_phrases` (always dropped), optional `hallucination_patterns` (regexes, always dropped), optional `hallucination_phrases_low_confidence` + `hallucination_logprob_threshold` (-1.0): everyday phrases like "vielen dank" are only dropped when the segment's `avg_logprob` is below the threshold. Before 2026-09-14 a real "Vielen Dank." at the end of a dictation was deleted every time (12 cases in the log) |
 
 When the app writes `calm_mode` or `rec_overlay`, it preserves the full config structure and writes readable indented JSON.
 
@@ -69,8 +72,9 @@ When the app writes `calm_mode` or `rec_overlay`, it preserves the full config s
 
 ### Debug Logging
 With `DEBUG_TRANSCRIPTION = True`, each Whisper segment is written to history log with status:
-- `KEEP (no_speech=0.12): Text` = Segment kept (no_speech value informational only)
-- `SKIP (hallucination): Text` = Known hallucination filtered
+- `KEEP (no_speech=0.12, logprob=-0.30): Text` = Segment kept (no_speech value informational only, logprob = Whisper confidence)
+- `SKIP (hallucination, logprob=-0.90): Text` = Known hallucination filtered (phrase list or regex)
+- `SKIP (low-confidence phrase, logprob=-1.60): Text` = Everyday phrase (e.g. "Vielen Dank.") dropped because Whisper was unsure
 - Note: `no_speech_prob` is logged only, not used for filtering (unreliable for German)
 
 ### Trailing Period
@@ -131,7 +135,8 @@ Python312/Lib/site-packages/nvidia/cudnn/bin
 | Model | Result | Recommendation |
 |--------|----------|------------|
 | `large-v3` + float16 + beam_size=5 | Best quality, including background music. Slower (~12-16s for 5 sentences) | Maximum quality, but too slow for daily use |
-| `large-v3-turbo` + int8_float16 + beam_size=3 | Good quality, much faster (~3-5s). Balanced transcription speed and quality | **Currently active** - best speed/quality compromise |
+| `large-v3-turbo` + int8_float16 + beam_size=3 | Good quality, much faster (~3-5s). Balanced transcription speed and quality | Active 2026-03-06 to 2026-09-14 |
+| `large-v3-turbo` + float16 + beam_size=3 + batch_size=8 | Same quality as int8_float16 on TTS test audio (WER 0-2%), 10-25% faster per chunk, plus 2-3x on long dictations from batched decoding (2026-09-14) | **Currently active** |
 | `distil-large-v3` | Transcribed German as English, even with `language="de"`. Unusable for German | Do not use |
 | `TheChola/whisper-large-v3-turbo-german-faster-whisper` | Gated HuggingFace repo, requires account + token. 2.6% WER on German. Not tested | Test with HF login if needed |
 
@@ -188,6 +193,21 @@ Python312/Lib/site-packages/nvidia/cudnn/bin
 | Fill disc behind electric rings | Filled red circle (200,42,42, Blur 8) fills gap between mic and ring |
 | Mic icon r_outer 384->400, border_r +6->+1 | Red circle fully fills icon, ring sits directly at edge |
 | no_speech_prob filtering disabled | No more lost segments (Whisper marked clear speech with 0.97) |
+| Asynchronous beeps from temp WAV files (2026-09-14) | Hotkey thread no longer blocks ~300 ms per beep (PR #1 regression); stop beep no longer delays transcription |
+| Prepared microphone stream (2026-09-14) | Mic capture starts ~150 ms after the hotkey instead of 0.6-1.1 s; fewer clipped first words |
+| Model warm-up at startup (2026-09-14) | First dictation per session no longer ~1 s slower (log: first-dictation median 5.6x vs. 13.5x real-time before) |
+| `BatchedInferencePipeline` + float16 (2026-09-14) | 30 s audio 2.0 s -> 0.8-1.3 s, 105 s audio 7.0 s -> 1.9 s, same WER |
+
+### Measured Performance (2026-09-14, float16 + batch 8, harness with TTS audio, fresh process)
+
+| Scenario | Audio | Transcription | Real-time factor |
+|----------|-------|---------------|-----------------|
+| Model load (cache) + warm-up | - | 4.3s + 1.1s | - |
+| Short dictation (12 words) | 5.5s | 0.4s | 14x |
+| Long dictation (75 words) | 30s | 0.8-1.3s | 24-37x |
+| Very long dictation (270 words) | 105s | 1.9s | 55x |
+
+Log statistics before the change (1837 `[PERF]` lines, Feb-Sep 2026): median 10-14x real-time, 40-90 s dictations 3-4 s, 90 s+ dictations 6-9 s (p90 18-20 s). The PR #1 merge itself did not slow transcription down (identical `model.transcribe` call and parameters); the felt slowness came from the blocking beeps plus the 0.3-0.8 s microphone stream creation before each recording.
 
 ### Measured Performance (2026-02-22)
 

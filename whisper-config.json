@@ -3,7 +3,8 @@
         "calm_mode": false,
         "rec_overlay": true,
         "dashboard_history_entries": 8,
-        "preserve_dashboard_history": true
+        "preserve_dashboard_history": true,
+        "clipboard_restore_delay_seconds": 3.0
     },
     "logging": {
         "save_history": true,

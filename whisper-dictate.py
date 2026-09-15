@@ -463,6 +463,10 @@ def _validate_config(config):
     if batch_size < 0:
         raise RuntimeError("Config value transcription.batch_size must be at least 0")
 
+    restore_delay = float(config["ui"].get("clipboard_restore_delay_seconds", CLIPBOARD_RESTORE_DELAY_DEFAULT))
+    if restore_delay < 0:
+        raise RuntimeError("Config value ui.clipboard_restore_delay_seconds must be at least 0")
+
     for pattern in config["post_processing"].get("hallucination_patterns", []):
         try:
             re.compile(pattern)
@@ -1603,6 +1607,143 @@ def monitor_silence_timeout(silence_timeout):
         time.sleep(0.1)
 
 
+# ============================================================
+# Text output: clipboard + Ctrl+V
+# ============================================================
+CLIPBOARD_RESTORE_DELAY_DEFAULT = 3.0  # seconds until the previous clipboard content returns; 0 = keep the dictation
+MODIFIER_RELEASE_WAIT_MAX = 0.5  # seconds to wait for the hotkey's modifier keys before Ctrl+V is sent
+
+_clipboard_lock = threading.Lock()
+_pending_clipboard_restore = None  # {"timer", "old_text", "sequence"} of the restore scheduled by the last paste
+
+_MODIFIER_VIRTUAL_KEYS = (
+    (0xA2, "ctrl"), (0xA3, "right ctrl"), (0xA4, "alt"), (0xA5, "right alt"),
+    (0xA0, "shift"), (0xA1, "right shift"), (0x5B, "win"), (0x5C, "right win"),
+)
+
+
+def debug_enabled():
+    try:
+        return bool(CONFIG["transcription"]["debug_transcription"])
+    except Exception:
+        return False
+
+
+def held_modifier_keys():
+    """Modifier keys Windows currently reports as pressed (physical or injected)."""
+    return [name for vk, name in _MODIFIER_VIRTUAL_KEYS if user32.GetAsyncKeyState(vk) & 0x8000]
+
+
+def clipboard_sequence_number():
+    """Windows increments this counter on every clipboard change (any process)."""
+    try:
+        return int(user32.GetClipboardSequenceNumber())
+    except Exception:
+        return -1
+
+
+def clipboard_restore_delay():
+    try:
+        return max(0.0, float(CONFIG["ui"].get("clipboard_restore_delay_seconds", CLIPBOARD_RESTORE_DELAY_DEFAULT)))
+    except Exception:
+        return CLIPBOARD_RESTORE_DELAY_DEFAULT
+
+
+def wait_for_modifier_release(max_wait):
+    """Wait (bounded) until no modifier key is held, so the injected Ctrl+V arrives as plain Ctrl+V.
+
+    Right after the stop hotkey the user may still hold Ctrl+Alt. A Ctrl+V sent at that moment
+    reaches the window as Ctrl+Alt+V, which pastes nothing. Returns (seconds waited, keys still held).
+    """
+    started = time.monotonic()
+    held = held_modifier_keys()
+    while held and time.monotonic() - started < max_wait:
+        time.sleep(0.01)
+        held = held_modifier_keys()
+    return time.monotonic() - started, held
+
+
+def schedule_clipboard_restore(old_text, sequence, delay):
+    """Put the previous clipboard content back after `delay` seconds.
+
+    Skipped when the clipboard changed in the meantime (sequence number differs), e.g. because
+    the user copied something else, and superseded when a newer dictation is pasted first.
+    """
+    global _pending_clipboard_restore
+    entry = {"old_text": old_text, "sequence": sequence, "timer": None}
+
+    def _restore():
+        global _pending_clipboard_restore
+        with _clipboard_lock:
+            if _pending_clipboard_restore is not entry:
+                return  # a newer dictation took over the restore
+            _pending_clipboard_restore = None
+        if clipboard_sequence_number() != sequence:
+            if debug_enabled():
+                append_to_history("[DEBUG] Clipboard restore skipped: clipboard changed by another app")
+            return
+        if not old_text:
+            if debug_enabled():
+                append_to_history("[DEBUG] Clipboard restore skipped: no previous text, dictation stays in clipboard")
+            return
+        try:
+            pyperclip.copy(old_text)
+            if debug_enabled():
+                append_to_history(f"[DEBUG] Clipboard restored after {delay:.1f}s")
+        except Exception as exc:
+            append_to_history(f"[ERROR] Clipboard restore failed: {exc}")
+
+    timer = threading.Timer(delay, _restore)
+    timer.daemon = True
+    entry["timer"] = timer
+    with _clipboard_lock:
+        _pending_clipboard_restore = entry
+    timer.start()
+
+
+def paste_text(text):
+    """Insert text into the foreground window via clipboard + Ctrl+V; previous clipboard content comes back later.
+
+    Until 2026-09-15 the previous content was restored after a fixed 150 ms. A target window that is
+    busy (e.g. a terminal rendering streamed output) reads the clipboard later than that and then pasted
+    the OLD content, typically the previous dictation. Now the dictation stays in the clipboard for
+    `ui.clipboard_restore_delay_seconds` (default 3 s) and the restore only happens when nobody else
+    changed the clipboard in the meantime.
+    """
+    global _pending_clipboard_restore
+
+    # A restore still pending from the previous dictation: cancel it and carry its original content forward
+    with _clipboard_lock:
+        pending = _pending_clipboard_restore
+        _pending_clipboard_restore = None
+    if pending is not None:
+        pending["timer"].cancel()
+
+    if pending is not None and clipboard_sequence_number() == pending["sequence"]:
+        old_text = pending["old_text"]  # clipboard still holds the previous dictation, not user content
+    else:
+        old_text = ""
+        try:
+            old_text = pyperclip.paste()
+        except Exception:
+            pass
+
+    pyperclip.copy(text)
+    sequence = clipboard_sequence_number()
+    time.sleep(0.05)
+
+    waited, still_held = wait_for_modifier_release(MODIFIER_RELEASE_WAIT_MAX)
+    keyboard.send("ctrl+v")
+
+    delay = clipboard_restore_delay()
+    if delay > 0:
+        schedule_clipboard_restore(old_text, sequence, delay)
+
+    if debug_enabled() and (waited >= 0.05 or still_held):
+        held_info = f", still held at Ctrl+V: {', '.join(still_held)}" if still_held else ""
+        append_to_history(f"[DEBUG] Paste waited {waited:.2f}s for modifier keys{held_info}")
+
+
 def stop_recording_and_transcribe():
     """Stop recording, transcribe, and insert text."""
     global recording, stream, audio_level
@@ -1693,26 +1834,12 @@ def stop_recording_and_transcribe():
             )
 
         if text:
-            if target_window:
+            if target_window and user32.GetForegroundWindow() != target_window:
+                # The user switched windows during the dictation: bring the original one back first
                 user32.SetForegroundWindow(target_window)
                 time.sleep(0.1)
 
-            old_clipboard = ""
-            try:
-                old_clipboard = pyperclip.paste()
-            except Exception:
-                pass
-
-            pyperclip.copy(text)
-            time.sleep(0.05)
-            keyboard.send("ctrl+v")
-
-            time.sleep(0.15)
-            try:
-                pyperclip.copy(old_clipboard)
-            except Exception:
-                pass
-
+            paste_text(text)
             append_to_history(text, duration)
 
     except Exception as e:

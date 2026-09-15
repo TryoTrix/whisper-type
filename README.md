@@ -158,6 +158,7 @@ All user-editable settings live in `whisper-config.json`. It is standard JSON, s
 | `ui.rec_overlay` | Show the red recording bar and microphone overlay. It can also be toggled from the dashboard. | `true` |
 | `ui.dashboard_history_entries` | Maximum number of dictations displayed in the dashboard. Set to `0` to hide the history. | `8` |
 | `ui.preserve_dashboard_history` | Show dashboard history from previous app sessions. When `false`, only dictations recorded since the current app launch are shown. | `true` |
+| `ui.clipboard_restore_delay_seconds` | Optional. Seconds the dictation stays in the clipboard before the previous clipboard content is restored (only if nothing else changed the clipboard meanwhile). Must stay above the time a busy target window needs to process Ctrl+V, otherwise the old content gets pasted. `0` keeps the dictation in the clipboard | `3.0` |
 | `logging.save_history` | Save the text of each dictation to `whisper-history.log`. When `false`, timestamps, durations, and diagnostic entries are still saved for statistics, but dictation text is omitted. | `true` |
 | `logging.max_file_size_mb` | Maximum size of `whisper-history.log`. Once reached, the file is cleared before the next entry is saved. | `10` |
 | `hotkeys.dictation` | Start/stop recording hotkey | `ctrl+alt+d` |
@@ -210,7 +211,7 @@ Results depend on the microphone, language, background noise, selected model, an
 2. **Audio** is captured as a NumPy array at 16kHz (no WAV file intermediary)
 3. **Whisper** transcribes with `faster-whisper` (CTranslate2 backend) on your GPU. Speech chunks found by the VAD are decoded in parallel (`BatchedInferencePipeline`); the model is warmed up once at startup
 4. **Post-processing** applies spoken punctuation replacement and hallucination filtering (fixed phrases and regexes are always dropped, everyday phrases like "Vielen Dank" only when Whisper was unsure)
-5. **Output** is pasted into the active window via clipboard
+5. **Output** is pasted into the active window via clipboard; the previous clipboard content comes back a few seconds later (`ui.clipboard_restore_delay_seconds`)
 
 The recording overlay uses pre-rendered animation frames (90 frames, 30fps) with 2D pixel displacement simulating SVG feDisplacementMap. A dual-ring system (inner plasma ring + outer orbit ring) with independent noise fields creates the electric border effect. All blur layers are pre-composited before the frame loop for minimal CPU usage during recording.
 

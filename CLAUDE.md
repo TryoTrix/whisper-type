@@ -41,7 +41,7 @@
 - **Microphone stream (since 2026-09-14):** Creating an `sd.InputStream` costs 0.3-0.8 s on the MME host API, so a stream is created ahead of time (`prepare_input_stream()`, at startup and again in a background thread after every dictation) and only started on the hotkey (~1 ms, first audio after ~150 ms). A created-but-stopped stream does not count as microphone use for Windows (verified via `CapabilityAccessManager` timestamps), so the privacy indicator only lights while recording. Recreating the stream after each dictation also picks up a changed default microphone; if `start()` fails, a fresh stream is created once more before giving up with a tray message
 - **Initial prompt:** Domain terms Whisper should recognize correctly (e.g. CLAUDE.md). Configurable via `transcription.initial_prompt`, no performance impact
 - **Spoken punctuation:** Spoken punctuation is automatically replaced (e.g. "Doppelpunkt" -> `:`, "Fragezeichen" -> `?`, "Anfuehrungszeichen" -> `"`) when `post_processing.apply_spoken_punctuation` is enabled. Mappings are configurable in `post_processing.spoken_punctuation`
-- **Output:** Transcribed text is inserted into the active window via clipboard
+- **Output:** Transcribed text is inserted into the active window via clipboard (`paste_text()`). The previous clipboard content comes back after `ui.clipboard_restore_delay_seconds` (default 3 s) and only if nothing else changed the clipboard in the meantime (`GetClipboardSequenceNumber`). Until 2026-09-15 this was a fixed 150 ms: a busy target window (a terminal rendering streamed output) read the clipboard after that and pasted the OLD text. Before Ctrl+V the tool waits up to 0.5 s for the hotkey's Ctrl/Alt to be released (otherwise the window receives Ctrl+Alt+V)
 - **Tray icon colors:** Gray = model loading, Green = ready, Red = recording
 - **Tray tooltip stats:** Shows today's dictations and audio duration in the tooltip (e.g. "Today: 5x, 2.1 min"). Updates after each dictation by reading `whisper-history.log`
 - **Audio feedback:** High beep (800 Hz) on start, low beep (500 Hz) on stop, plus a ready chime after model load. The sounds are rendered once into temp WAV files (`%TEMP%\whisper-type-*.wav`) and played with `winsound.PlaySound(SND_FILENAME | SND_ASYNC)`, i.e. without blocking: PR #1's in-memory `SND_MEMORY` playback cannot be asynchronous and blocked the hotkey thread ~300 ms per beep (measured; `winsound.Beep` before PR #1 blocked ~105 ms). Audio captured during the start beep (`BEEP_DURATION_MS` + 30 ms) is dropped in `audio_callback` so the beep is never transcribed. Volume via `audio.beep_volume` (`0.0` silent, `1.0` max); fallback to blocking in-memory playback if the temp file cannot be written
@@ -52,7 +52,7 @@
 
 | Section | Description |
 |---------|-------------|
-| `ui` | Dashboard/toggle state such as `calm_mode`, `rec_overlay`, `dashboard_history_entries`, and `preserve_dashboard_history` |
+| `ui` | Dashboard/toggle state such as `calm_mode`, `rec_overlay`, `dashboard_history_entries`, and `preserve_dashboard_history`, plus `clipboard_restore_delay_seconds` (3.0, optional since 2026-09-15, 0 = the dictation stays in the clipboard) |
 | `logging` | History text persistence (`save_history`) and history file size limit (`max_file_size_mb`) |
 | `hotkeys` | Dictation shortcut |
 | `audio` | Recording sample rate, beep volume, and `silence_timeout_seconds` (auto-stop after sustained silence; `0` disables it) |
@@ -160,6 +160,9 @@ Python312/Lib/site-packages/nvidia/cudnn/bin
 2. **Model not loaded:** Check tray icon; if gray instead of green, model is not loaded. Check if `whisper-error.log` exists
 3. **CUDA error:** Read `whisper-error.log` in project folder. Common causes: GPU busy by another process, driver update needed
 4. **Keyboard hook lost:** After sleep/wake, Windows updates, or long runtime (~3h+), low-level keyboard hook may be lost. Press `CTRL+ALT+W` to restart
+
+### Previous message pasted instead of the new dictation (fixed 2026-09-15)
+Symptom: the transcription in the log is correct, but the window shows the previous dictation. Cause: the old clipboard content was restored a fixed 150 ms after Ctrl+V; a busy target window (Claude Code in Windows Terminal while an answer is streaming) processed the Ctrl+V later and pasted the already restored old content. Evidence: the Windows clipboard history (Win+V), read via WinRT with timestamps, showed the previous dictation in the clipboard right after each affected dictation. Fix: `paste_text()` restores only after `ui.clipboard_restore_delay_seconds` (3 s) and only if the clipboard sequence number is unchanged. The log shows the outcome as `[DEBUG] Clipboard restored after 3.0s` or `... restore skipped: clipboard changed by another app`; `[DEBUG] Paste waited ...` reports modifier keys that were still held.
 
 ### Known Behaviors
 - `pythonw` has no console: errors are invisible. Model load errors are written to `whisper-error.log`

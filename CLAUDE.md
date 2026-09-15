@@ -12,6 +12,7 @@
 | `whisper-dictate.bat` | Starter fuer whisper-dictate (ruft `pythonw` auf, pfadunabhaengig via `%~dp0`) |
 | `whisper-restart.bat` | Beendet laufende Instanz und startet neu (kill + wait + start) |
 | `whisper-transcribe.py` | Audiodatei zu Text (CLI-Tool, kein Hotkey) |
+| `whisper-server.py` | Lokaler HTTP-Transkriptionsserver fuers LAN (seit 15.09.2026, fuer das Mappe-Projekt gebaut): `POST /jobs` Upload → `GET /jobs/<id>` Text + Segment- + Wort-Zeitstempel, `POST /transcribe` synchron, CORS, optional `--token`, `--device cpu --compute-type int8 --threads N` simuliert einen CPU-Server. Nur Standardbibliothek, nutzt `whisper-config.json` (Modell, Transkription, Post-Processing) und den zweistufigen Halluzinations-Filter. Audio wird nach dem Dekodieren geloescht. Start: `python whisper-server.py --port 8765`, Windows-Firewall beim ersten Handy-Zugriff freigeben (privates Netz) |
 | `install.bat` | Einrichtung fuer neue PCs: .venv, Pakete, Autostart (per Y/N-Abfrage), Modell-Download |
 | `uninstall.bat` | Deinstallation (seit PR #1): Registry-Key, optional Logs/Modell-Cache/.venv, alles mit Y/N-Abfrage |
 | `whisper-config.json` | ALLE Einstellungen, versioniert (seit PR #1 einzige Config-Quelle, App startet nicht ohne) |

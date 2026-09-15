@@ -12,6 +12,7 @@
 | `whisper-dictate.bat` | Launcher for whisper-dictate (calls `pythonw`, path-independent via `%~dp0`) |
 | `whisper-restart.bat` | Stops running instance and starts it again (kill + wait + start) |
 | `whisper-transcribe.py` | Audio file to text (CLI tool, no hotkey) |
+| `whisper-server.py` | Local HTTP transcription server for the LAN (since 2026-09-15): `POST /jobs` upload → `GET /jobs/<id>` text + segment + word timestamps, `POST /transcribe` synchronous, CORS, optional `--token`, `--device cpu --compute-type int8 --threads N` to simulate a CPU server. Standard library only; reuses `whisper-config.json` (model, transcription, post-processing) and the two-tier hallucination filter. Built for the Mappe project (phone app upload flow) |
 | `install.bat` | Setup for new PCs: packages, autostart, model download |
 | `uninstall.bat` | Cleanup tool: removes autostart and optionally logs/model cache |
 | `whisper-config.json` | ALL settings, versioned (single config source since PR #1, the app does not start without it) |

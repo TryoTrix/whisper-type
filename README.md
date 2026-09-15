@@ -214,6 +214,26 @@ Results depend on the microphone, language, background noise, selected model, an
 
 The recording overlay uses pre-rendered animation frames (90 frames, 30fps) with 2D pixel displacement simulating SVG feDisplacementMap. A dual-ring system (inner plasma ring + outer orbit ring) with independent noise fields creates the electric border effect. All blur layers are pre-composited before the frame loop for minimal CPU usage during recording.
 
+## Local Transcription Server (development)
+
+`whisper-server.py` turns the same model and settings into a small HTTP service for the local network, e.g. to test a phone app's upload flow against your PC before renting a server. Standard library only (no extra packages), CORS enabled, audio is deleted right after decoding.
+
+```
+python whisper-server.py                      # http://0.0.0.0:8765, settings from whisper-config.json
+python whisper-server.py --token secret123    # require "Authorization: Bearer secret123"
+python whisper-server.py --device cpu --compute-type int8 --threads 4   # simulate a CPU-only server
+```
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /health` | Status, model, queue length |
+| `POST /jobs` | Upload audio (multipart field `audio` or raw body; wav, webm/opus, mp4/aac, m4a, ogg, mp3). Returns `job_id` (202). Query: `language`, `prompt`, `word_timestamps=0/1`, `spoken_punctuation=0/1` |
+| `GET /jobs/<id>` | `status` (`queued`, `running`, `done`, `error`), `text`, `segments` (start, end, text, avg_logprob), `words` (start, end, word, probability), `dropped_segments`, timing |
+| `POST /transcribe` | Same as `/jobs` but waits and returns the finished result (short clips) |
+| `DELETE /jobs/<id>` | Remove a result |
+
+Limits: `--max-mb` (50), `--max-minutes` (20), results kept for `--result-ttl` minutes (1440). One worker thread holds one model; jobs run one after another. Windows Firewall asks once for `python.exe` when the first phone connects; allow it for private networks.
+
 ## Platform Compatibility
 
 | Platform | Status | Reason |

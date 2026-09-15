@@ -1422,7 +1422,6 @@ def warmup_model(whisper_model, batched_pipeline):
             beam_size=int(transcription_config["beam_size"]),
             vad_filter=False,
             temperature=0.0,
-            without_timestamps=True,
         )
         if batched_pipeline is not None:
             segments, _ = batched_pipeline.transcribe(

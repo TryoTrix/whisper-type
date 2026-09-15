@@ -41,7 +41,7 @@
 - **Mikrofon-Stream (seit 14.09.2026):** Ein `sd.InputStream` zu erzeugen kostet auf dem MME-Host-API 0.3-0.8 s. Darum wird der Stream vorab erzeugt (`prepare_input_stream()`, beim Start und nach jedem Diktat in einem Hintergrund-Thread) und beim Hotkey nur gestartet (~1 ms, erstes Audio nach ~150 ms). Ein erzeugter, aber gestoppter Stream zaehlt fuer Windows nicht als Mikrofon-Nutzung (per `CapabilityAccessManager`-Zeitstempel verifiziert), das Privacy-Symbol leuchtet nur waehrend der Aufnahme. Weil der Stream nach jedem Diktat neu erzeugt wird, greift auch ein gewechseltes Standard-Mikrofon; schlaegt `start()` fehl, wird einmal ein frischer Stream erzeugt, danach Tray-Meldung «Mikrofon-Fehler»
 - **Initial Prompt:** Fachbegriffe die Whisper korrekt erkennen soll (z.B. CLAUDE.md, TryoTrix). Seit PR #1 konfigurierbar via `transcription.initial_prompt` in whisper-config.json, kein Performance-Impact
 - **SPOKEN_PUNCTUATION:** Gesprochene Satzzeichen werden automatisch ersetzt (z.B. "Doppelpunkt" → `:`, "Fragezeichen" → `?`, "Anführungszeichen" → `"`). Seit PR #1 konfigurierbar via `post_processing.spoken_punctuation` in whisper-config.json. "Punkt" ist bewusst NICHT enthalten (matcht Teilwörter: "Punkte" → ".e"), am 14.08.2026 erneut entfernt nachdem Commit 0d6dbed es wieder eingefuehrt hatte
-- **Ausgabe:** Transkribierter Text wird via Clipboard in das aktive Fenster eingefuegt
+- **Ausgabe:** Transkribierter Text wird via Clipboard in das aktive Fenster eingefuegt (`paste_text()`). Der vorherige Clipboard-Inhalt kommt erst nach `ui.clipboard_restore_delay_seconds` (Default 3 s) zurueck und nur, wenn niemand sonst das Clipboard geaendert hat (`GetClipboardSequenceNumber`). Bis 15.09.2026 stand hier fest 150 ms: ein beschaeftigtes Zielfenster (Terminal, das gerade Output rendert) las das Clipboard erst danach und fuegte die ALTE Nachricht ein. Vor Ctrl+V wartet das Tool bis 0.5 s, bis Ctrl/Alt vom Hotkey losgelassen sind (sonst kommt Ctrl+Alt+V an)
 - **Tray-Icon Farben:** Grau = Modell laedt, Gruen = bereit, Rot = Aufnahme laeuft
 - **Tray-Tooltip Statistik:** Zeigt heutige Diktate und Audio-Dauer im Tooltip an (z.B. "Heute: 5x, 2.1 Min"). Wird nach jedem Diktat aktualisiert, liest aus `whisper-history.log`
 - **Audio-Feedback:** Hoher Beep (800 Hz) bei Start, tiefer Beep (500 Hz) bei Stop, sanfter Ready-Chime (G5→C6) nach dem Modell-Laden. Seit 14.09.2026 werden die Toene einmal in Temp-WAVs gerendert (`%TEMP%\whisper-type-*.wav`) und mit `winsound.PlaySound(SND_FILENAME | SND_ASYNC)` abgespielt, also ohne zu blockieren: die In-Memory-Variante aus PR #1 (`SND_MEMORY`) kann nicht asynchron spielen und blockierte den Hotkey-Thread ~300 ms pro Beep (gemessen; `winsound.Beep` vor PR #1: ~105 ms). Audio waehrend des Start-Beeps (`BEEP_DURATION_MS` + 30 ms) wird in `audio_callback` verworfen, der Beep landet nie in der Transkription. Lautstaerke via `audio.beep_volume` (0.0 = stumm bis 1.0); Fallback auf blockierendes In-Memory-Abspielen, falls die Temp-Datei nicht schreibbar ist
@@ -55,7 +55,7 @@ Alle Einstellungen liegen in `whisper-config.json` (versioniert, striktes Schema
 
 | Sektion | Wichtige Keys |
 |---------|---------------|
-| `ui` | `calm_mode` (false), `rec_overlay` (true), `dashboard_history_entries` (8), `preserve_dashboard_history` (true) |
+| `ui` | `calm_mode` (false), `rec_overlay` (true), `dashboard_history_entries` (8), `preserve_dashboard_history` (true), `clipboard_restore_delay_seconds` (3.0, optional, seit 15.09.2026, 0 = Diktat bleibt im Clipboard) |
 | `logging` | `save_history` (false = Diktattexte nicht loggen, nur Statistik), `max_file_size_mb` (10, Datei wird bei Erreichen GELEERT) |
 | `hotkeys` | `dictation` (ctrl+alt+d) |
 | `audio` | `sample_rate` (16000), `beep_volume` (0.1), `silence_timeout_seconds` (20, 0 = aus) |
@@ -162,6 +162,9 @@ Das Script findet die NVIDIA DLLs (cublas, cudnn) seit PR #1 dynamisch via `sysc
 2. **Modell nicht geladen:** Tray-Icon pruefen - wenn grau statt gruen, ist das Modell nicht geladen. Pruefen ob `whisper-error.log` existiert
 3. **CUDA-Fehler:** `whisper-error.log` im Projektordner lesen. Haeufig: GPU von anderem Prozess belegt, Treiber-Update noetig
 4. **Keyboard-Hook verloren:** Nach Sleep/Wake, Windows-Updates oder laengerer Laufzeit (~3h+) kann der Low-Level Keyboard-Hook verloren gehen. `CTRL+ALT+W` zum Neustarten druecken
+
+### Alte Nachricht statt neuem Diktat eingefuegt (15.09.2026 behoben)
+Symptom: Transkription im Log korrekt, im Fenster erscheint aber das vorherige Diktat. Ursache: der alte Clipboard-Inhalt wurde fest 150 ms nach Ctrl+V wiederhergestellt; ein beschaeftigtes Zielfenster (Claude Code in Windows Terminal, waehrend eine Antwort streamt) verarbeitete das Ctrl+V erst spaeter und fuegte den bereits zurueckgestellten alten Inhalt ein. Nachweis: Windows-Clipboard-History (Win+V) per WinRT auslesen, Script `.planning/whisper-paste-2026-09-15/clip-history.ps1` (lokal). Fix: `paste_text()` stellt erst nach `ui.clipboard_restore_delay_seconds` (3 s) wieder her und nur bei unveraenderter Sequence-Number. Im Log zeigt `[DEBUG] Clipboard restored after 3.0s` bzw. `... restore skipped: clipboard changed by another app` den Ausgang, `[DEBUG] Paste waited ...` meldet noch gehaltene Modifier-Tasten.
 
 ### Bekannte Eigenheiten
 - `pythonw` hat keine Konsole - Fehler sind unsichtbar. Fehler beim Modell-Laden werden in `whisper-error.log` geschrieben

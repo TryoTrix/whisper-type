@@ -280,6 +280,7 @@ python whisper-transcribe.py "path/to/audiofile.mp3"
 - Creates `.txt` (full text) and `.srt` (subtitles) next to source file
 - Supported formats: mp3, wav, m4a, flac, ogg, wma, aac, mp4, mkv, avi
 - Same GPU settings as whisper-dictate
+- Started with the system Python while a project `.venv` exists, the script relaunches itself inside the venv. Since PR #3 this uses `subprocess.run` and passes the exit code on; the previous `os.execv` detached the child from the terminal on Windows (prompts could not be answered) and split paths containing spaces
 
 ---
 
@@ -290,6 +291,7 @@ python whisper-transcribe.py "path/to/audiofile.mp3"
 - **gh CLI:** not installed. PRs are reviewed with the `/pr-review N` skill (`.claude/skills/pr-review/`): `pr-scan.py` fetches the PR head into a local `pr-N` branch (never checked out, nothing executed) and scans metadata, links, hidden unicode, dangerous code patterns and prompt-injection phrases; `SKILL.md` then covers the manual checklist, the verdict, the merge in a temporary worktree, the German-branch sync, restart and test
 - **PR #1 (merged 2026-08-14 as df7f5db):** external contributor vousk, 23 commits, +1250/-686: English translation of docs/UI/logs, `whisper-config.json` as the single config source, venv-based install, `uninstall.bat`, silence auto-stop, log rotation, beep volume, privacy mode. Security review before the merge: clean. The faulty "Punkt" regex from the PR config was removed right after the merge (4b2b584)
 - **PR #2 (merged 2026-08-21):** external contributor tkhyn, 1 line: optional `model.download_root` passed to `WhisperModel`. Security review: clean. Bug fixed in the follow-up commit: the original line passed `str(None)` = `"None"` as `cache_dir`, which would have re-downloaded the model into a folder named `None` for every user without the key
+- **PR #3 (merged 2026-09-21):** external contributor vousk, 1 commit, +6/-1 in `whisper-transcribe.py`: the relaunch into the project `.venv` uses `subprocess.run` (inherits stdin/stdout/stderr, passes the exit code on) instead of `os.execv`. On Windows `os.execv` spawns the child and ends the parent at once, so the shell took the terminal back and the language prompt could not be answered. Security review: clean (ASCII only, no links, no network, same command line as before). Verified in an isolated test with a throwaway venv: prompts reach the child, the exit code is propagated. Side effect not mentioned in the PR: `os.execv` does not quote arguments, so the relaunch failed for install folders or audio paths containing spaces; fixed as well
 
 ---
 

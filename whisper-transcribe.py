@@ -11,12 +11,15 @@ Pass the language code (e.g. en, de, fr) as second argument for scripted
 use; without it, the script asks interactively.
 
 Supported formats: mp3, wav, m4a, flac, ogg, wma, aac, mp4, mkv, avi
+
+On Windows, the program restarts automatically in the Python virtual environment if available.
 """
 
 import sys
 import os
 import time
 import sysconfig
+import subprocess
 from pathlib import Path
 
 
@@ -28,7 +31,9 @@ VENV_PYTHON = VENV_DIR / "Scripts" / "python.exe"
 def use_project_venv() -> None:
     """Relaunch with the project virtual environment when it is available."""
     if VENV_PYTHON.exists() and Path(sys.prefix).resolve() != VENV_DIR.resolve():
-        os.execv(str(VENV_PYTHON), [str(VENV_PYTHON), str(Path(__file__).resolve()), *sys.argv[1:]])
+        command = [str(VENV_PYTHON), str(Path(__file__).resolve()), *sys.argv[1:]]
+        result = subprocess.run(command, stdin=sys.stdin, stdout=sys.stdout, stderr=sys.stderr)
+        raise SystemExit(result.returncode)
 
 
 def configure_cuda_dlls() -> None:
